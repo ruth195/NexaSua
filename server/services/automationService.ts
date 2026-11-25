@@ -155,9 +155,22 @@ export async function runAutomationCycle() {
   }
 }
 
+let lastCycleAt = 0;
+
+export function triggerAutomationIfDue() {
+  if (!isDbConnected() || running) return;
+  const now = Date.now();
+  if (now - lastCycleAt < 60_000) return;
+  lastCycleAt = now;
+  void runAutomationCycle();
+}
+
 export function startAutomationEngine() {
   if (intervalHandle) return;
   intervalHandle = setInterval(() => {
     void runAutomationCycle();
   }, 60_000);
+  if (typeof intervalHandle.unref === 'function') {
+    intervalHandle.unref();
+  }
 }

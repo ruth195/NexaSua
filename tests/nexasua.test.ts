@@ -423,3 +423,64 @@ test('Public Portal hides Super Admin links and School Dashboard customization r
   const { SystemConfigModel } = await import('../server/models/index.ts');
   assert.equal(SystemConfigModel.schema.path('trialDays').options.default, 7);
 });
+
+test('Vercel Serverless Handler: rewrites __nexasua_path and serves /api/health JSON cleanly', async () => {
+  const { normalizeVercelApiUrl, default: vercelHandler } = await import('../api/index.ts');
+
+  assert.equal(normalizeVercelApiUrl('/api/health'), '/api/health');
+  assert.equal(
+    normalizeVercelApiUrl('/api/index?__nexasua_path=auth/login'),
+    '/api/auth/login'
+  );
+  assert.equal(
+    normalizeVercelApiUrl('/api/index?__nexasua_path=auth/google/callback&code=abc&state=xyz'),
+    '/api/auth/google/callback?code=abc&state=xyz'
+  );
+
+  // Exercise the actual Express serverless handler with a real socket-less HTTP request/response
+  const { EventEmitter } = await import('node:events');
+  await new Promise<void>((resolve, reject) => {
+    const req: any = new EventEmitter();
+    req.url = '/api/index?__nexasua_path=health';
+    req.method = 'GET';
+    req.headers = { host: 'example.vercel.app' };
+    req.connection = {};
+    req.socket = {};
+
+    const headers: Record<string, string | string[]> = {};
+    let bodyText = '';
+    const res: any = new EventEmitter();
+    res.statusCode = 200;
+    res.setHeader = (k: string, v: string | string[]) => {
+      headers[k.toLowerCase()] = v;
+    };
+    res.getHeader = (k: string) => headers[k.toLowerCase()];
+    res.removeHeader = (k: string) => {
+      delete headers[k.toLowerCase()];
+    };
+    res.writeHead = (code: number) => {
+      res.statusCode = code;
+      return res;
+    };
+    res.write = (chunk: Buffer | string) => {
+      bodyText += chunk.toString();
+      return true;
+    };
+    res.end = (chunk?: Buffer | string) => {
+      if (chunk) bodyText += chunk.toString();
+      try {
+        assert.equal(res.statusCode, 200);
+        const parsed = JSON.parse(bodyText);
+        assert.equal(parsed.ok, true);
+        assert.ok(parsed.pricing);
+        resolve();
+      } catch (err) {
+        reject(err);
+      }
+      return res;
+    };
+
+    vercelHandler(req, res);
+  });
+});
+

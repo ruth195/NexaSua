@@ -11,6 +11,10 @@ const dbState: DbConnectionState = {
   status: 'Not Configured',
 };
 
+const globalForDb = globalThis as typeof globalThis & {
+  __nexasuaConnectPromise?: Promise<boolean> | null;
+};
+
 export function getDbState(): DbConnectionState {
   if (!process.env.MONGODB_URI?.trim()) {
     return { status: 'Not Configured', error: 'MONGODB_URI environment variable is not set.' };
@@ -33,23 +37,45 @@ export async function connectDatabase(): Promise<boolean> {
     return false;
   }
 
-  try {
-    dbState.status = 'Testing';
-    dbState.error = undefined;
-    mongoose.set('strictQuery', true);
-    await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 8000,
-    });
+  if (mongoose.connection.readyState === 1) {
     dbState.status = 'Connected';
-    dbState.lastCheckedAt = new Date();
+    dbState.error = undefined;
     return true;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unable to connect to MongoDB Atlas';
-    dbState.status = 'Error';
-    dbState.error = message;
-    dbState.lastCheckedAt = new Date();
-    return false;
   }
+
+  if (globalForDb.__nexasuaConnectPromise) {
+    return globalForDb.__nexasuaConnectPromise;
+  }
+
+  globalForDb.__nexasuaConnectPromise = (async () => {
+    try {
+      dbState.status = 'Testing';
+      dbState.error = undefined;
+      mongoose.set('strictQuery', true);
+      await mongoose.connect(uri, {
+        serverSelectionTimeoutMS: 8000,
+        maxPoolSize: 10,
+      });
+      dbState.status = 'Connected';
+      dbState.lastCheckedAt = new Date();
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to connect to MongoDB Atlas';
+      dbState.status = 'Error';
+      dbState.error = message;
+      dbState.lastCheckedAt = new Date();
+      return false;
+    } finally {
+      globalForDb.__nexasuaConnectPromise = null;
+    }
+  })();
+
+  return globalForDb.__nexasuaConnectPromise;
+}
+
+export async function ensureDatabaseConnection(): Promise<boolean> {
+  if (isDbConnected()) return true;
+  return connectDatabase();
 }
 
 export async function pingDatabase(): Promise<{ ok: boolean; latencyMs?: number; error?: string }> {

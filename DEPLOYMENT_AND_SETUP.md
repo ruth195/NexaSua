@@ -36,8 +36,8 @@ Add these variables in **Settings → Secrets** inside Google AI Studio (never h
    - In Google Cloud Console → Credentials, create an OAuth 2.0 Web Client and add `<YOUR_APP_URL>/api/auth/google/callback` as an Authorized Redirect URI, then set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in Secrets.
 4. **Register & Approve First School**:
    - Register via `/register` on the public website or create a school directly inside the Super Admin Console.
-   - Approve the pending school to generate its unique School Code (`NXS-XXX-NNNN`), activate its 14-day trial, and provision the default 30/70 grading template.
-4. **Configure School Paystack Merchant (Optional for Complete Plan)**:
+   - Approve the pending school to generate its unique School Code (`NXS-XXX-NNNN`), activate its 7-day trial, and provision the default 30/70 grading template.
+5. **Configure School Paystack Merchant (Optional for Complete Plan)**:
    - School Administrators enter their school's own Paystack Public & Secret keys under **Settings & Subscription**.
    - Set Paystack Webhook URL to `https://<your-app-domain>/api/webhooks/paystack`.
 
@@ -50,3 +50,18 @@ Add these variables in **Settings → Secrets** inside Google AI Studio (never h
 - Production start: `npm run start`
 - Type check: `npm run lint`
 - Automated unit tests: `npm test`
+
+---
+
+## 4. Deploying on Vercel
+
+This repository includes `vercel.json` and `api/index.ts` so all `/api/*` Express endpoints run as a Vercel Serverless Function alongside the Vite frontend (`dist/`):
+
+1. In **Vercel → Project Settings → Environment Variables**, add:
+   - `MONGODB_URI` (Required — in MongoDB Atlas **Network Access**, allow `0.0.0.0/0` so Vercel serverless IPs can connect)
+   - `JWT_SECRET` (Required in production — 32+ random characters so sessions stay valid across serverless invocations)
+   - `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD` (Recommended)
+   - Optional: `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `APP_URL` (your `https://...vercel.app` domain), `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PAYSTACK_SECRET_KEY`, `PAYSTACK_PUBLIC_KEY`
+2. Leave Vercel's **Framework Preset** as `Vite` (or default) — `vercel.json` automatically configures `vite build`, `outputDirectory: "dist"`, `/api/*` serverless routing, and SPA rewrites.
+3. Verify the deployed backend by visiting `https://<your-vercel-domain>/api/health` and confirming `"ok": true` and `"dbConnected": true`.
+

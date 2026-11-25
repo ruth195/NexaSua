@@ -1,15 +1,19 @@
 // server.ts
+import express9 from "express";
+import path2 from "path";
+import { fileURLToPath } from "url";
+
+// server/app.ts
 import cookieParser from "cookie-parser";
 import dotenv from "dotenv";
 import express8 from "express";
-import path2 from "path";
-import { fileURLToPath } from "url";
 
 // server/db.ts
 import mongoose from "mongoose";
 var dbState = {
   status: "Not Configured"
 };
+var globalForDb = globalThis;
 function getDbState() {
   if (!process.env.MONGODB_URI?.trim()) {
     return { status: "Not Configured", error: "MONGODB_URI environment variable is not set." };
@@ -29,23 +33,41 @@ async function connectDatabase() {
     dbState.error = "MONGODB_URI environment variable is not set.";
     return false;
   }
-  try {
-    dbState.status = "Testing";
-    dbState.error = void 0;
-    mongoose.set("strictQuery", true);
-    await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 8e3
-    });
+  if (mongoose.connection.readyState === 1) {
     dbState.status = "Connected";
-    dbState.lastCheckedAt = /* @__PURE__ */ new Date();
+    dbState.error = void 0;
     return true;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unable to connect to MongoDB Atlas";
-    dbState.status = "Error";
-    dbState.error = message;
-    dbState.lastCheckedAt = /* @__PURE__ */ new Date();
-    return false;
   }
+  if (globalForDb.__nexasuaConnectPromise) {
+    return globalForDb.__nexasuaConnectPromise;
+  }
+  globalForDb.__nexasuaConnectPromise = (async () => {
+    try {
+      dbState.status = "Testing";
+      dbState.error = void 0;
+      mongoose.set("strictQuery", true);
+      await mongoose.connect(uri, {
+        serverSelectionTimeoutMS: 8e3,
+        maxPoolSize: 10
+      });
+      dbState.status = "Connected";
+      dbState.lastCheckedAt = /* @__PURE__ */ new Date();
+      return true;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unable to connect to MongoDB Atlas";
+      dbState.status = "Error";
+      dbState.error = message;
+      dbState.lastCheckedAt = /* @__PURE__ */ new Date();
+      return false;
+    } finally {
+      globalForDb.__nexasuaConnectPromise = null;
+    }
+  })();
+  return globalForDb.__nexasuaConnectPromise;
+}
+async function ensureDatabaseConnection() {
+  if (isDbConnected()) return true;
+  return connectDatabase();
 }
 async function pingDatabase() {
   if (!isDbConnected() || !mongoose.connection.db) {
@@ -7799,18 +7821,27 @@ async function runAutomationCycle() {
     running = false;
   }
 }
+var lastCycleAt = 0;
+function triggerAutomationIfDue() {
+  if (!isDbConnected() || running) return;
+  const now = Date.now();
+  if (now - lastCycleAt < 6e4) return;
+  lastCycleAt = now;
+  void runAutomationCycle();
+}
 function startAutomationEngine() {
   if (intervalHandle) return;
   intervalHandle = setInterval(() => {
     void runAutomationCycle();
   }, 6e4);
+  if (typeof intervalHandle.unref === "function") {
+    intervalHandle.unref();
+  }
 }
 
-// server.ts
+// server/app.ts
 dotenv.config();
-var __filename = fileURLToPath(import.meta.url);
-var __dirname = path2.dirname(__filename);
-async function createServer() {
+function createApiApp() {
   const app = express8();
   app.set("trust proxy", 1);
   app.use((_req, res, next) => {
@@ -7826,8 +7857,13 @@ async function createServer() {
   app.use(express8.json({ limit: "2mb" }));
   app.use(express8.urlencoded({ extended: true, limit: "2mb" }));
   app.use(cookieParser());
-  await connectDatabase();
-  startAutomationEngine();
+  app.use("/api", async (_req, _res, next) => {
+    await ensureDatabaseConnection();
+    if (process.env.VERCEL) {
+      triggerAutomationIfDue();
+    }
+    next();
+  });
   app.use("/api/public", publicRoutes_default);
   app.get("/api/health", (req, res, next) => {
     req.url = "/health";
@@ -7839,6 +7875,9 @@ async function createServer() {
   app.use("/api/academics", academicsRoutes_default);
   app.use("/api/complete", completeRoutes_default);
   app.use("/api/webhooks", webhookRoutes_default);
+  app.use("/api", (_req, res) => {
+    res.status(404).json({ error: "API endpoint not found." });
+  });
   app.use(
     (err, req, res, next) => {
       if (!req.path.startsWith("/api")) {
@@ -7849,6 +7888,16 @@ async function createServer() {
       res.status(500).json({ error: message });
     }
   );
+  return app;
+}
+
+// server.ts
+var __filename = fileURLToPath(import.meta.url);
+var __dirname = path2.dirname(__filename);
+async function startServer() {
+  const app = createApiApp();
+  await connectDatabase();
+  startAutomationEngine();
   const isProd = process.env.NODE_ENV === "production";
   if (!isProd) {
     const { createServer: createViteServer } = await import("vite");
@@ -7859,7 +7908,7 @@ async function createServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path2.resolve(__dirname, "dist");
-    app.use(express8.static(distPath));
+    app.use(express9.static(distPath));
     app.get("*", (_req, res) => {
       res.sendFile(path2.join(distPath, "index.html"));
     });
@@ -7869,7 +7918,7 @@ async function createServer() {
     console.log(`NexaSua platform server listening on http://0.0.0.0:${PORT}`);
   });
 }
-createServer().catch((err) => {
+startServer().catch((err) => {
   console.error("Failed to start NexaSua server:", err);
   process.exit(1);
 });
