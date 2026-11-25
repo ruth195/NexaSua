@@ -549,13 +549,11 @@ export function SchoolRegisterPage({
 
 export function LoginPage({
   googleOAuthEnabled,
-  adminManagedBySecrets = false,
   onStartGoogleRegistration,
   onLoginSuccess,
   onNavigate,
 }: {
   googleOAuthEnabled: boolean;
-  adminManagedBySecrets?: boolean;
   onStartGoogleRegistration: (data: {
     email: string;
     fullName: string;
@@ -805,13 +803,6 @@ export function LoginPage({
 
         {mode === 'login' && (
           <div className="space-y-4">
-            {adminManagedBySecrets && (
-              <div className="rounded-lg border border-slate-200 bg-[#FBF8F1] p-3 text-xs text-[#64748B]">
-                School Admin credential secrets (<span className="font-mono">ADMIN_EMAIL</span> &amp;{' '}
-                <span className="font-mono">ADMIN_PASSWORD</span>) are configured. Enter them below
-                to automatically verify against your secrets and open your admin portal.
-              </div>
-            )}
             <form onSubmit={submitLogin} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-[#102846] mb-1">Email</label>

@@ -254,7 +254,6 @@ export default function App() {
         ) : (
           <LoginPage
             googleOAuthEnabled={Boolean(health?.googleOAuthEnabled)}
-            adminManagedBySecrets={Boolean(health?.adminManagedBySecrets)}
             onNavigate={navigate}
             onStartGoogleRegistration={(data) => {
               setGoogleOnboarding(data);

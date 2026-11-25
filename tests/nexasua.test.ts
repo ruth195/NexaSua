@@ -391,9 +391,12 @@ test('Public Portal hides Super Admin links and School Dashboard customization r
     path.resolve(process.cwd(), 'src/pages/RegisterAndLoginPages.tsx'),
     'utf8'
   );
-  // Public LoginPage must not render a link to /nexaflow-admin
+  // Public LoginPage must not render a link to /nexaflow-admin or expose ADMIN_EMAIL/ADMIN_PASSWORD notices
   const loginPart = registerLoginSrc.slice(0, registerLoginSrc.indexOf('SuperAdminPortalLoginPage'));
   assert.equal(loginPart.includes("onNavigate('/nexaflow-admin')"), false);
+  assert.equal(loginPart.includes('ADMIN_EMAIL'), false);
+  assert.equal(loginPart.includes('ADMIN_PASSWORD'), false);
+  assert.equal(loginPart.includes('School Admin credential secrets'), false);
 
   const {
     DEFAULT_DASHBOARD_SETTINGS,
