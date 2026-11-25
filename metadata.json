@@ -1,0 +1,8 @@
+{
+  "name": "NexaSua",
+  "description": "Smart Schools. Brighter Futures. Multi-tenant Ghanaian School Management SaaS platform by NexaFlow Technologies.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

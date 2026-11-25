@@ -1,0 +1,1648 @@
+
+PROJECT NAME: NEXASUA
+PARENT COMPANY: NEXAFLOW TECHNOLOGIES
+TAGLINE: SMART SCHOOLS. BRIGHTER FUTURES.
+PROJECT TYPE: FULL-STACK SCHOOL MANAGEMENT SAAS
+INITIAL MARKET: GHANA
+FUTURE MARKET: AFRICA
+
+YOUR ROLE
+
+Act as a senior full-stack engineer, SaaS architect, database engineer, cybersecurity specialist, UI/UX designer, educational technology consultant, and software quality assurance engineer.
+
+Your responsibility is to design and build NexaSua, a complete, modern, secure, scalable, multi-tenant school management platform developed by NexaFlow Technologies.
+
+This must be a REAL working application.
+
+Do not build only a landing page or a static prototype.
+
+Build the frontend, backend, database integration, authentication, user dashboards, academic modules, school administration, subscription management, communication features, and required business logic.
+
+All buttons, forms, dashboards, calculations, and workflows must connect to genuine functionality.
+
+==================================================
+1. CRITICAL DEVELOPMENT INSTRUCTIONS
+==================================================
+
+THE FOLLOWING REQUIREMENTS ARE NON-NEGOTIABLE.
+
+1. DO NOT ADD MOCK DATA.
+
+2. DO NOT generate fake schools, students, teachers, parents, examinations, payments, invoices, or academic records.
+
+3. DO NOT populate dashboards with fabricated statistics.
+
+4. DO NOT create imaginary testimonials, customer counts, or school partnerships.
+
+5. DO NOT display fake charts or revenue figures.
+
+6. Every dashboard must obtain its information from the actual database.
+
+7. If the database contains no records, display a professional empty state.
+
+8. Student and teacher records must be created through real registration, invitation, or import processes.
+
+9. Do not hardcode authentication credentials.
+
+10. Do not simulate successful payments or pretend external integrations are operational.
+
+11. Do not create fake backend endpoints.
+
+12. Do not leave buttons that appear functional but perform no action.
+
+13. Do not use localStorage as the primary database.
+
+14. Do not rely on frontend-only authentication or authorization.
+
+15. Do not expose administrator credentials, secrets, API keys, or database connection strings.
+
+16. Do not introduce features that compromise children's privacy.
+
+17. Do not generate multiple alternative logos. Use only the approved NexaSua logo uploaded with this prompt.
+
+18. Do not automatically seed the application database with demonstration records.
+
+19. Automated tests may use isolated test fixtures, but these must never populate the actual school database or appear in the real application.
+
+20. If any feature cannot be implemented fully, document its status clearly instead of pretending it works.
+
+The application must initialize with a clean database and provide the necessary setup interfaces.
+
+==================================================
+2. NEXASUA BRAND IDENTITY
+==================================================
+
+Official name:
+NexaSua
+
+Parent company:
+NexaFlow Technologies
+
+Tagline:
+Smart Schools. Brighter Futures.
+
+Brand concept:
+
+NexaSua is a Ghanaian-inspired educational technology platform designed to digitize school operations.
+
+The name combines Nexa, representing modern technology and innovation, with Sua, a Twi word associated with learning.
+
+The platform should reflect Ghanaian educational needs while maintaining a professional international appearance.
+
+OFFICIAL BRAND COLOURS
+
+Primary Navy:
+#102846
+
+Primary Teal:
+#148D82
+
+Heritage Gold:
+#E2A83B
+
+Warm Ivory:
+#FBF8F1
+
+White:
+#FFFFFF
+
+Slate Grey:
+#64748B
+
+Use these colours consistently throughout the application.
+
+Use Navy for headings and important navigation.
+
+Use Teal for primary buttons, active navigation, and important interactive elements.
+
+Use Gold sparingly for tasteful highlights.
+
+Use white and warm ivory for clean, readable backgrounds.
+
+Maintain accessible colour contrast.
+
+TYPOGRAPHY
+
+Use Manrope or Plus Jakarta Sans for headings.
+
+Use Inter or an equally readable font for body text.
+
+Maintain consistent spacing, typography, and iconography.
+
+LOGO REQUIREMENTS
+
+Use the single approved NexaSua logo supplied with this prompt.
+
+Do not generate alternative logo designs.
+
+Do not add unrelated icons, illustrations, decorative elements, or patterns to the logo.
+
+Preserve the logo's proportions and original composition.
+
+Optimize it for use in:
+
+Website header
+Login pages
+School dashboards
+Student portal
+Parent portal
+Application icon
+Browser favicon
+System notifications
+Report-card footer
+Public marketing pages
+
+Use the same approved identity across the entire platform.
+
+If the uploaded logo is unavailable, request the asset rather than inventing a replacement.
+
+GHANAIAN IDENTITY
+
+Use terminology familiar to Ghanaian schools:
+
+Academic year
+Term
+Headteacher
+Class teacher
+Continuous assessment
+End-of-term examination
+Terminal report
+Admission number
+School fees
+Parent/Guardian
+
+Default currency:
+Ghana Cedi (GH₵)
+
+Default timezone:
+Africa/Accra
+
+Default date format:
+DD MMM YYYY
+
+Allow configuration for other countries in future.
+
+Do not claim official approval or affiliation with GES, NaCCA, or the Ministry of Education without authorization.
+
+==================================================
+3. BUSINESS MODEL AND SUBSCRIPTIONS
+==================================================
+
+NexaSua must offer exactly TWO standard subscription plans.
+
+PLAN ONE: NEXASUA CORE
+
+This plan focuses on academics and digital reporting.
+
+It must include:
+
+Student management
+Teacher management
+Class management
+Subject management
+Academic calendar
+Teacher-subject assignments
+Assessment configuration
+Examination score entry
+Automatic grade calculation
+Student performance analysis
+Result approval
+Digital report cards
+Attendance management
+Student dashboards
+Parent dashboards
+Academic analytics
+Historical academic records
+
+PLAN TWO: NEXASUA COMPLETE
+
+This plan includes everything in Core, PLUS:
+
+School fee management
+Fee invoices
+Payment recording
+Online payments
+Digital receipts
+Outstanding balance tracking
+Fee reminders
+School announcements
+Parent communication
+Admissions management
+Staff management
+School timetables
+Advanced school administration
+Financial dashboards
+Administrative analytics
+Communication history
+Financial reports
+
+All subscription entitlements must be enforced through the backend.
+
+==================================================
+4. SUBSCRIPTION PRICING
+==================================================
+
+Use the following proposed introductory pricing for Ghana.
+
+STUDENT POPULATION: 1–150
+
+Core:
+GH₵350 per term
+
+Complete:
+GH₵650 per term
+
+STUDENT POPULATION: 151–400
+
+Core:
+GH₵700 per term
+
+Complete:
+GH₵1,200 per term
+
+STUDENT POPULATION: 401–800
+
+Core:
+GH₵1,200 per term
+
+Complete:
+GH₵2,100 per term
+
+STUDENT POPULATION: 801–1,500
+
+Core:
+GH₵2,000 per term
+
+Complete:
+GH₵3,500 per term
+
+STUDENT POPULATION: ABOVE 1,500
+
+Custom quotation.
+
+Provide a 14-day free trial.
+
+Offer a configurable 10% discount when a school prepays for three terms.
+
+All prices must be editable through the Super Admin dashboard.
+
+The subscription engine must support:
+
+Subscription activation
+Trial periods
+Plan upgrades
+Plan downgrades
+Renewal reminders
+Payment history
+Subscription invoices
+Expired subscriptions
+Grace periods
+Administrative overrides
+Suspension
+Reactivation
+
+Students must not be charged individually for NexaSua subscriptions.
+
+The school pays the subscription, and its active student population determines the pricing band.
+
+Subscription expiration must never automatically delete student information.
+
+==================================================
+5. MULTI-SCHOOL ARCHITECTURE
+==================================================
+
+Build NexaSua as a secure multi-tenant SaaS platform.
+
+Multiple schools must be able to register and use the same application.
+
+Each school must have a logically isolated environment.
+
+Every school will have:
+
+Unique school ID
+Unique school code
+School profile
+School logo
+School administrator
+Teachers
+Students
+Parents
+Classes
+Subjects
+Academic records
+Financial records
+Subscription information
+School settings
+
+School A must never access School B's information.
+
+Enforce tenant isolation on every backend request.
+
+Do not trust tenant IDs supplied directly by a browser.
+
+Support future school groups with multiple campuses or branches.
+
+==================================================
+6. USER ROLES AND ACCESS
+==================================================
+
+Create the following roles:
+
+1. Platform Super Admin
+2. School Administrator
+3. Headteacher/Principal
+4. Class Teacher
+5. Subject Teacher
+6. Bursar/Finance Officer
+7. Administrative Staff
+8. Student
+9. Parent/Guardian
+
+Each role must have its own dashboard.
+
+Implement role-based access control.
+
+A teacher must only access students and subjects assigned to them.
+
+A bursar must not change examination results.
+
+A student must not modify grades.
+
+Parents must only access verified children linked to their accounts.
+
+Users must not access restricted information by changing URLs or API requests.
+
+==================================================
+7. PLATFORM SUPER ADMIN DASHBOARD
+==================================================
+
+Create a separate Super Admin portal for NexaFlow Technologies.
+
+Do not display its login link on the public website.
+
+However, secure the portal with proper authentication, MFA, and server-side authorization rather than relying on a hidden URL.
+
+The dashboard must display real information from the database.
+
+Include:
+
+Registered schools
+Pending school registrations
+Approved schools
+Active subscriptions
+Expired subscriptions
+Trial subscriptions
+Core subscribers
+Complete subscribers
+Registered students
+Subscription revenue
+Pending payments
+Subscription renewals
+Custom project requests
+Support tickets
+Security events
+System health
+
+SUPER ADMIN FUNCTIONS
+
+Approve schools
+Reject applications
+Suspend schools
+Reactivate schools
+Manage subscriptions
+Edit subscription prices
+Create promotional offers
+Review subscription payments
+Manage school accounts
+Monitor permitted platform analytics
+Manage support requests
+Send platform announcements
+Manage custom development requests
+Configure integrations
+Review audit logs
+Manage system settings
+
+Do not allow unrestricted access to confidential student records without a legitimate, controlled support process.
+
+==================================================
+8. SCHOOL REGISTRATION
+==================================================
+
+Schools must be able to register from the public website.
+
+Registration fields:
+
+School name
+School type
+Educational level
+Country
+Region
+Town
+School address
+School email
+School telephone
+Administrator name
+Administrator email
+Student population
+Selected subscription plan
+
+Supported levels:
+
+Kindergarten
+Primary
+Junior High School
+Senior High School
+
+After registration:
+
+Validate details.
+Verify administrator email.
+Save the application as pending.
+Notify Super Admin.
+Allow review and approval.
+Generate a unique school code.
+Activate the approved subscription or trial.
+Begin school onboarding.
+
+School onboarding must guide administrators through:
+
+School profile completion
+Logo upload
+Academic year setup
+Term setup
+Class creation
+Subject configuration
+Teacher invitations
+Student enrollment
+Guardian linking
+Grading configuration
+Report-card customization
+
+Schools must also be registerable directly by Super Admin.
+
+==================================================
+9. SCHOOL ADMINISTRATOR DASHBOARD
+==================================================
+
+Create a professional dashboard for each school's administrator.
+
+Core subscribers must see:
+
+Dashboard
+Students
+Teachers
+Classes
+Subjects
+Academic Years
+Assessments
+Results
+Report Cards
+Attendance
+Academic Analytics
+Settings
+
+Complete subscribers must additionally see:
+
+School Fees
+Invoices
+Payments
+Receipts
+Fee Reminders
+Announcements
+Admissions
+Staff Management
+Timetables
+Financial Analytics
+
+All statistics must come from the school's actual records.
+
+If no students exist, show:
+
+"No students have been registered yet."
+
+Provide an action to add or import students.
+
+Do not display fake enrollment numbers.
+
+==================================================
+10. STUDENT MANAGEMENT
+==================================================
+
+Allow authorized administrators to create and manage student records.
+
+Student profiles must support:
+
+Full name
+Admission number
+Student ID
+Class
+Academic year
+Admission date
+Date of birth where needed
+Student status
+Guardian information
+Academic history
+Attendance records
+Published results
+
+Support:
+
+Student enrollment
+Student transfers
+Class promotion
+Graduation
+Archiving
+Record updates
+Bulk import from CSV or Excel
+
+Preserve academic history when students change classes.
+
+==================================================
+11. TEACHER MANAGEMENT
+==================================================
+
+Allow administrators to create teacher accounts.
+
+Assign teachers to:
+
+Classes
+Subjects
+Academic years
+Class teacher roles
+Other authorized academic responsibilities
+
+A teacher must log in and see only their assigned subjects and classes.
+
+Provide a dashboard displaying:
+
+Assigned classes
+Assigned subjects
+Pending assessment submissions
+Assessment deadlines
+Attendance tasks
+Marks entry
+Submitted results
+Published results
+Academic performance summaries
+
+==================================================
+12. EXAMINATION AND GRADING ENGINE
+==================================================
+
+Build a professional examination management system.
+
+A teacher should be able to:
+
+Log in.
+Select an academic year.
+Select a term.
+Select an assigned class.
+Select an assigned subject.
+View students.
+Enter assessment marks.
+Save work.
+Submit results for approval.
+
+Support different assessment types:
+
+Class exercises
+Quizzes
+Assignments
+Projects
+Class tests
+Practical assessments
+Continuous assessment
+End-of-term examinations
+
+ASSESSMENT CONFIGURATION
+
+Allow schools to configure:
+
+Assessment categories
+Maximum marks
+Assessment weightings
+Grading scales
+Pass marks
+Grade descriptions
+Rounding rules
+Ranking rules
+Missing marks
+
+Provide a configurable 30% continuous assessment and 70% examination scheme as an optional assessment template.
+
+Do not force every school to use this scheme.
+
+All grading must use deterministic calculations.
+
+The system must calculate:
+
+Assessment totals
+Subject percentages
+Final grades
+Grade remarks
+Class averages
+Overall averages
+Grade distributions
+Optional class positions
+
+Support tied positions.
+
+Prevent scores exceeding the maximum allowed marks.
+
+Distinguish zero scores from missing scores.
+
+Allow bulk examination marks upload.
+
+Support:
+
+Draft results
+Submitted results
+Reviewed results
+Approved results
+Published results
+
+Published grades must be protected from unauthorized editing.
+
+Corrections must require approval and create an audit record.
+
+==================================================
+13. CLASS TEACHER AND HEADTEACHER REVIEW
+==================================================
+
+Create a controlled academic approval workflow.
+
+Subject teachers submit completed marks.
+
+Class teachers review their assigned class results.
+
+Headteachers or authorized academic administrators approve publication.
+
+The system should identify:
+
+Missing marks
+Incomplete subjects
+Invalid scores
+Unsubmitted results
+Pending approvals
+
+Only approved results should be published.
+
+Every approval or correction must be logged.
+
+==================================================
+14. DIGITAL TERMINAL REPORT CARDS
+==================================================
+
+Create a complete PDF report-card generation system.
+
+Each report card should support:
+
+School logo
+School name
+School address
+School contacts
+Student name
+Student admission number
+Student class
+Academic year
+Academic term
+Subjects
+Continuous assessment
+Examination scores
+Total scores
+Grades
+Subject remarks
+Overall average
+Optional class position
+Attendance summary
+Class teacher remarks
+Headteacher remarks
+Promotion status
+Next term reopening date
+Authorized signatures
+Report reference number
+Issue date
+
+Allow schools to customize their report layouts.
+
+Support different reporting formats for KG, Primary, JHS, and SHS.
+
+Report cards must be:
+
+Professional
+Easy to read
+Mobile-friendly
+Printable on A4 paper
+Downloadable as PDF
+Suitable for black-and-white printing
+
+Support individual and bulk generation.
+
+Include optional secure QR-code verification.
+
+Do not expose full student records publicly through QR verification.
+
+==================================================
+15. STUDENT DASHBOARD
+==================================================
+
+Students must be able to:
+
+View personal information.
+View registered subjects.
+View published examination results.
+View academic progress.
+View attendance.
+View previous term results.
+Download report cards.
+View authorized academic notices.
+
+Students must never access unpublished results.
+
+They must never modify their grades.
+
+==================================================
+16. PARENT DASHBOARD
+==================================================
+
+Parents must have their own secure dashboard.
+
+Support multiple children linked to one parent.
+
+Parents should see:
+
+Children's profiles
+Published results
+Report cards
+Attendance
+Academic progress
+Academic history
+
+For Complete subscribers, parents should also see:
+
+School fee balances
+Invoices
+Payment history
+Receipts
+Payment reminders
+School announcements
+Online payment options
+
+School administrators must verify guardian-child relationships.
+
+Do not permit access to student records based only on knowledge of a student ID.
+
+==================================================
+17. ATTENDANCE MANAGEMENT
+==================================================
+
+Teachers should be able to mark:
+
+Present
+Absent
+Late
+Excused
+
+Attendance must be stored by date, student, and class.
+
+Generate attendance summaries.
+
+Display trends.
+
+Allow approved corrections.
+
+Show relevant attendance information on report cards.
+
+==================================================
+18. ACADEMIC ANALYTICS
+==================================================
+
+Create academic dashboards that display actual calculated statistics.
+
+Support:
+
+Performance by class
+Performance by subject
+Grade distribution
+Pass rates
+Assessment completion
+Attendance trends
+Student academic progress
+Term comparisons
+
+Identify students who may need academic support.
+
+Do not automatically make disciplinary or academic decisions based only on statistical predictions.
+
+==================================================
+19. SCHOOL FEES MANAGEMENT — COMPLETE
+==================================================
+
+Create a fully functional school finance module.
+
+Authorized users must be able to configure fees such as:
+
+Tuition
+Examination fees
+Feeding
+Transport
+Boarding
+Development levies
+Other permitted charges
+
+Support fee structures based on:
+
+Class
+Academic year
+Term
+Student category
+Individual student
+
+Create invoices automatically or manually.
+
+Support:
+
+Full payments
+Partial payments
+Installments
+Discounts
+Scholarships
+Waivers
+Outstanding balances
+Arrears
+Credit notes
+Refund requests
+Payment reversals
+
+Every payment must have a proper financial record.
+
+Do not allow silent deletion or modification of posted transactions.
+
+Maintain a reliable ledger.
+
+==================================================
+20. ONLINE SCHOOL FEE PAYMENTS
+==================================================
+
+Prepare secure integration with Paystack.
+
+Support approved Ghana mobile money, card, and other available payment channels.
+
+Keep school fee payments separate from NexaSua subscription payments.
+
+School fees must be directed to the appropriate school's verified merchant or supported settlement arrangement.
+
+NexaFlow subscription fees belong to NexaFlow Technologies.
+
+Implement:
+
+Payment initialization
+Reference generation
+Server-side verification
+Webhook signature verification
+Duplicate payment protection
+Payment reconciliation
+Receipt generation
+Failed payment handling
+Refund tracking
+
+Never record a payment as successful based only on a browser redirect.
+
+Do not store card details or mobile money PINs.
+
+Where merchant credentials are not configured, show:
+
+"Online payment is not yet configured."
+
+Do not simulate successful real payments.
+
+Allow authorized finance officers to record verified offline payments.
+
+==================================================
+21. SCHOOL FEE REMINDERS
+==================================================
+
+Create a reminder scheduling system.
+
+Administrators should be able to send reminders before or after payment deadlines.
+
+Support:
+
+In-app reminders
+Email reminders
+Optional SMS reminders
+
+Provide editable templates.
+
+Allow reminders to include:
+
+School name
+Guardian name
+Student name where appropriate
+Outstanding balance
+Due date
+Payment instructions
+
+Track:
+
+Scheduled
+Sent
+Delivered where confirmed
+Failed
+
+Prevent duplicate reminders.
+
+Use backend scheduling rather than relying on an open browser.
+
+==================================================
+22. ANNOUNCEMENTS
+==================================================
+
+Create a complete school communication system.
+
+Authorized administrators should be able to publish announcements.
+
+Examples:
+
+School reopening
+Examination timetables
+Parent meetings
+School events
+Emergency closures
+Public holidays
+Fee reminders
+Important notices
+
+Support:
+
+Draft announcements
+Scheduled announcements
+Published announcements
+Archived announcements
+
+Allow targeting by:
+
+All users
+Teachers
+Parents
+Classes
+Specific authorized recipients
+
+Support in-app notifications and configured external messaging services.
+
+Do not invent delivery statuses.
+
+==================================================
+23. ADMISSIONS MANAGEMENT
+==================================================
+
+For Complete subscribers, build an admissions module.
+
+Support:
+
+Online applications
+Applicant information
+Guardian details
+Application status
+Review and approval
+Acceptance
+Rejection
+Waitlisting
+Student enrollment
+
+Accepted applicants should be transferable into the student database without duplicate records.
+
+==================================================
+24. STAFF MANAGEMENT
+==================================================
+
+Create administrative staff management.
+
+Include:
+
+Staff profiles
+Departments
+Job roles
+Employment status
+Attendance
+Leave requests
+Leave approval
+Assigned responsibilities
+Authorized staff documents
+
+Limit access to confidential employment information.
+
+==================================================
+25. TIMETABLE MANAGEMENT
+==================================================
+
+Allow schools to create timetables.
+
+Include:
+
+Classes
+Teachers
+Subjects
+Periods
+Rooms
+Break periods
+
+Prevent scheduling conflicts.
+
+Allow timetable viewing, printing, and export.
+
+==================================================
+26. FINANCIAL AND ADMINISTRATIVE ANALYTICS
+==================================================
+
+Complete subscribers must have financial dashboards.
+
+Display real figures for:
+
+Total fees billed
+Total collected
+Outstanding balances
+Overdue invoices
+Collection rates
+Payment history
+Fee categories
+Admissions
+Staff records
+
+Support filters by academic year, term, and relevant categories.
+
+Allow authorized exports to PDF and spreadsheet-compatible formats.
+
+==================================================
+27. NEXASUA CUSTOM
+==================================================
+
+NexaSua must also offer customized systems to schools.
+
+This is a separate commercial service, not a third standard subscription tier.
+
+Create a public page titled:
+
+"Need a School Management System Built Specifically for Your School?"
+
+NexaFlow Technologies should offer:
+
+White-label school platforms
+Personalized branding
+Custom report cards
+Dedicated school portals
+Custom school websites
+Specialized workflows
+Custom domain integration
+Dedicated hosting where contracted
+Maintenance and support
+
+PROPOSED CUSTOM PRICING
+
+White-label configuration:
+Starting around GH₵2,000 setup, plus recurring fees.
+
+Bespoke development:
+Starting quotations around GH₵8,000.
+
+These are indicative prices, not fixed guarantees.
+
+Create a custom project request form.
+
+Collect:
+
+School name
+Contact person
+Email
+Phone
+Location
+Student population
+Requested features
+Budget range
+Timeline
+Additional requirements
+
+Save requests in MongoDB.
+
+Display them in a protected Super Admin Custom Projects section.
+
+==================================================
+28. CUSTOM PROJECT MANAGEMENT
+==================================================
+
+Create a project management module for NexaFlow.
+
+Support:
+
+New requests
+Requirements review
+Consultation
+Quotation preparation
+Quotation approval
+Development
+Testing
+Deployment
+Maintenance
+Completion
+
+Allow NexaFlow administrators to manage quotations, invoices, project milestones, and maintenance renewals.
+
+==================================================
+29. PUBLIC WEBSITE
+==================================================
+
+Build a professional public website.
+
+Required pages:
+
+Home
+Features
+How It Works
+Solutions
+Core
+Complete
+Pricing
+Custom Systems
+About
+Contact
+FAQ
+School Registration
+Login
+Privacy Policy
+Terms of Service
+
+HOMEPAGE HERO
+
+Headline:
+
+"Run Your School Smarter with NexaSua."
+
+Description:
+
+"From marking examinations to generating report cards and managing school fees, NexaSua brings the day-to-day running of your school into one secure place."
+
+Primary button:
+
+"Register Your School"
+
+Secondary button:
+
+"Explore the Platform"
+
+Include a pricing calculator.
+
+Include clear explanations of Core and Complete.
+
+Include a custom system request section.
+
+Do not display invented customer statistics, testimonials, or partnerships.
+
+==================================================
+30. DATABASE ARCHITECTURE
+==================================================
+
+Use MongoDB Atlas.
+
+Create an appropriate database schema for:
+
+Schools
+Users
+Roles
+Permissions
+Students
+Teachers
+Parents
+Guardian relationships
+Classes
+Subjects
+Academic years
+Terms
+Assessments
+Scores
+Grades
+Result approvals
+Published results
+Report cards
+Attendance
+Fee structures
+Invoices
+Payments
+Receipts
+Financial ledger
+Subscriptions
+Subscription plans
+Subscription invoices
+Announcements
+Notifications
+Admissions
+Staff
+Timetables
+Custom requests
+Custom projects
+Support tickets
+Audit logs
+Settings
+
+Use appropriate indexes, validation, and tenant ownership fields.
+
+Create safe database initialization procedures.
+
+Do not seed fake school records.
+
+The application should start with empty collections, except required application configuration and secure system metadata.
+
+==================================================
+31. AUTHENTICATION AND SECURITY
+==================================================
+
+Implement security suitable for an application handling children's information and financial records.
+
+Include:
+
+Secure password hashing
+Email verification
+Password reset
+Role-based access control
+Server-side authorization
+Tenant isolation
+Multi-factor authentication for privileged roles
+Session expiration
+Secure cookies
+Rate limiting
+Input validation
+Secure file uploads
+Protection against common injection attacks
+CSRF protection where applicable
+Secure API endpoints
+Audit logs
+HTTPS
+Encrypted communication
+Secure secret management
+Appropriate backups
+Safe error responses
+
+Do not create hardcoded administrator passwords.
+
+Provide a secure first-time Super Admin account setup process.
+
+The Super Admin portal must not be publicly advertised in site navigation.
+
+Every protected operation must verify the user's authorization on the server.
+
+==================================================
+32. DATA PROTECTION
+==================================================
+
+Design the application to support applicable Ghanaian data protection requirements, including the Data Protection Act, 2012 (Act 843).
+
+Include:
+
+Privacy notices
+Data processing agreements
+Access controls
+Data retention procedures
+Secure data exports
+Correction requests
+Incident response procedures
+Appropriate consent controls
+Secure data deletion
+Audit trails
+
+Do not expose student records in public search results.
+
+Do not send identifiable student information to external AI services by default.
+
+Never claim regulatory certification without verification.
+
+==================================================
+33. OPTIONAL AI FEATURES
+==================================================
+
+Prepare optional AI-assisted analytics.
+
+Possible functions:
+
+Academic performance summaries
+Learning support suggestions
+Draft teacher remarks
+Draft school announcements
+Administrative report summaries
+
+AI output must be reviewed by authorized staff.
+
+Do not use AI to determine official grades, payments, or financial balances.
+
+All official calculations must use reliable deterministic logic.
+
+The main application must work without a paid AI API.
+
+==================================================
+34. PERFORMANCE AND RESPONSIVENESS
+==================================================
+
+Optimize the entire platform for mobile phones.
+
+Many Ghanaian users will access it through Android devices and mobile internet.
+
+Implement:
+
+Responsive layouts
+Fast loading
+Efficient database queries
+Server-side pagination
+Optimized images
+Lazy loading
+Appropriate caching
+Accessible forms
+Clear navigation
+Professional animations
+Useful empty states
+
+The dashboard should remain usable on smaller screens.
+
+Avoid excessive animation, visual clutter, and unnecessary network requests.
+
+==================================================
+35. INTEGRATIONS
+==================================================
+
+Support configurable integrations for:
+
+MongoDB Atlas
+Paystack
+Transactional email
+SMS providers
+File storage
+Optional Gemini AI
+
+Where an integration requires credentials, provide clear configuration steps.
+
+Show integration status accurately:
+
+Not Configured
+Testing
+Connected
+Error
+
+Do not represent unconfigured integrations as working.
+
+Use free development tools where practical.
+
+Do not claim commercial hosting, SMS, or payment processing will always be free.
+
+==================================================
+36. AUTOMATION ENGINE
+==================================================
+
+Implement backend-controlled automation for:
+
+Subscription renewal reminders
+Trial expiration notices
+School fee reminders
+Scheduled announcements
+Payment reconciliation
+Academic result publication schedules
+Maintenance notifications
+Failed notification retries
+
+Use reliable job scheduling and duplicate protection.
+
+Keep school communication isolated by tenant.
+
+==================================================
+37. REPORTING AND EXPORTS
+==================================================
+
+Generate professional reports for authorized users.
+
+Core exports:
+
+Student lists
+Teacher assignments
+Marks sheets
+Results
+Terminal reports
+Attendance reports
+Academic analytics
+
+Complete exports:
+
+Invoices
+Receipts
+Fee statements
+Payment registers
+Outstanding balances
+Financial summaries
+Admissions reports
+Staff reports
+
+Support PDF, CSV, and Excel-compatible exports where appropriate.
+
+Protect exports with server-side authorization.
+
+==================================================
+38. IMPLEMENTATION ORDER
+==================================================
+
+Build the system in stages while preserving the complete architecture.
+
+STAGE 1: FOUNDATION
+
+Brand identity
+Public website structure
+Backend
+MongoDB connection
+Authentication
+Authorization
+Multi-tenancy
+Super Admin
+School registration
+Subscription engine
+
+STAGE 2: CORE ACADEMICS
+
+Teachers
+Students
+Parents
+Classes
+Subjects
+Academic calendar
+Assessments
+Marks entry
+Grading
+Approvals
+Report cards
+Attendance
+Academic analytics
+
+STAGE 3: COMPLETE ADMINISTRATION
+
+School fees
+Invoices
+Payments
+Receipts
+Fee reminders
+Announcements
+Admissions
+Staff management
+Timetables
+Financial analytics
+
+STAGE 4: BUSINESS OPERATIONS
+
+Subscription checkout
+Renewals
+Custom school services
+Project quotations
+Support tickets
+Platform analytics
+
+STAGE 5: PRODUCTION READINESS
+
+Security testing
+Permission testing
+Database verification
+Payment integration testing
+Mobile optimization
+Accessibility
+Performance testing
+Backup and recovery testing
+Deployment documentation
+
+Do not stop at visual interface generation.
+
+Implement the functional backend and database workflows.
+
+==================================================
+39. QUALITY ASSURANCE
+==================================================
+
+Test the following workflows:
+
+A school registers and is approved.
+
+A school administrator creates a class.
+
+A teacher is assigned to a subject.
+
+Students are enrolled.
+
+The teacher enters assessment scores.
+
+The system calculates grades accurately.
+
+The teacher submits results.
+
+The headteacher approves publication.
+
+Students and parents view published results.
+
+A terminal report card downloads as a PDF.
+
+A Complete subscriber creates school-fee invoices.
+
+A guardian makes a verified test payment through the payment provider's testing environment.
+
+The ledger records the payment once.
+
+The guardian receives a receipt.
+
+An administrator schedules an announcement.
+
+The intended recipients receive it through configured channels.
+
+A Core subscriber cannot access Complete-only endpoints.
+
+A teacher cannot access another school's students.
+
+A parent cannot access an unrelated child's records.
+
+All tests must run in isolated testing environments without populating the production application with mock data.
+
+==================================================
+40. REQUIRED FINAL DELIVERY
+==================================================
+
+When implementing NexaSua, provide:
+
+1. Complete application structure.
+
+2. Actual frontend implementation.
+
+3. Actual backend implementation.
+
+4. MongoDB models and connectivity.
+
+5. Secure authentication.
+
+6. Role-based dashboards.
+
+7. School registration and onboarding.
+
+8. Functional examination and grading system.
+
+9. PDF report-card generation.
+
+10. School fee management.
+
+11. Payments and receipts.
+
+12. Announcements and reminders.
+
+13. Two subscription plans.
+
+14. NexaSua Custom request management.
+
+15. Secure Super Admin portal.
+
+16. Environment variable documentation.
+
+17. Deployment instructions.
+
+18. Integration configuration instructions.
+
+19. Automated test results.
+
+20. A list of remaining implementation or configuration requirements.
+
+Make all setup instructions suitable for someone building through Google AI Studio without manually writing code.
+
+Never claim the system is production-ready until the required security, payment, database, and workflow tests have passed.
+
+==================================================
+FINAL INSTRUCTION
+==================================================
+
+BUILD NEXASUA AS A COMPLETE, SECURE, PROFESSIONAL SCHOOL MANAGEMENT SAAS PLATFORM.
+
+Use the approved single NexaSua logo.
+
+Follow the official NexaSua brand identity.
+
+Implement both Core and Complete subscriptions.
+
+Include the custom school management service.
+
+Use real database persistence.
+
+Do not add mock data.
+
+Do not invent users, schools, students, grades, invoices, or payments.
+
+Do not create fake dashboard statistics.
+
+Use professional empty states until actual records are created.
+
+All critical authorization and financial calculations must happen on the backend.
+
+Build the platform in dependency order and keep an accurate implementation checklist.
+
+Begin by establishing the project architecture, design system, secure authentication, MongoDB integration, school onboarding, and a functional examination-to-report-card workflow.
+
+Then implement the remaining modules systematically.
+
+At each stage, distinguish completed and tested features from features still awaiting implementation or external configuration.
+
+The final product should be suitable for real Ghanaian schools once all required testing, operational setup, and compliance checks have been completed.
+
+BEGIN BUILDING NEXASUA.
