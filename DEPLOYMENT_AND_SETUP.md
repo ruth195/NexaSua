@@ -13,7 +13,7 @@ Add these variables in **Settings → Secrets** inside Google AI Studio (never h
 | `MONGODB_URI` | **Required** for persistence | MongoDB Atlas connection string (`mongodb+srv://...`) |
 | `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD` | Recommended | NexaFlow Super Admin login credentials secret pair (can be changed anytime in Settings → Secrets) |
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Optional | School Admin login credentials secret pair for instant secret-backed sign-in on `/login` |
-| `JWT_SECRET` | Recommended for production | Random 32+ char string for session & QR token signing |
+| `SESSION_SECRET` | Recommended for production | Random 32+ char string for session, encryption & QR token signing (also accepts `JWT_SECRET`) |
 | `SUPER_ADMIN_SETUP_KEY` | Optional | Extra setup passcode required during first-time Super Admin creation (when email/password secrets are not set) |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional | Enables **Sign in with Google** on the School Portal and registration flow (excludes Super Admin) |
 | `PAYSTACK_SECRET_KEY` | Optional | NexaFlow Technologies Paystack secret key for school subscriptions |
@@ -59,7 +59,7 @@ This repository includes `vercel.json` and `api/index.ts` so all `/api/*` Expres
 
 1. In **Vercel → Project Settings → Environment Variables**, add:
    - `MONGODB_URI` (Required — in MongoDB Atlas **Network Access**, allow `0.0.0.0/0` so Vercel serverless IPs can connect)
-   - `JWT_SECRET` (Required in production — 32+ random characters so sessions stay valid across serverless invocations)
+   - `SESSION_SECRET` (Required in production — 32+ random characters so sessions stay valid across serverless invocations; also accepts `JWT_SECRET`)
    - `SUPER_ADMIN_EMAIL` and `SUPER_ADMIN_PASSWORD` (Recommended)
    - Optional: `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `APP_URL` (your `https://...vercel.app` domain), `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PAYSTACK_SECRET_KEY`, `PAYSTACK_PUBLIC_KEY`
 2. Leave Vercel's **Framework Preset** as `Vite` (or default) — `vercel.json` automatically configures `vite build`, `outputDirectory: "dist"`, `/api/*` serverless routing, and SPA rewrites.

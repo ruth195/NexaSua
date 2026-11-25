@@ -487,3 +487,57 @@ test('Vercel Serverless Handler: rewrites __nexasua_path and serves /api/health 
   });
 });
 
+test('Session Secret: SESSION_SECRET takes precedence, falls back to JWT_SECRET, and derives encryption key', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+  const {
+    decryptSecret,
+    encryptSecret,
+    getEncryptionKey,
+    getJwtSecret,
+    getSessionSecret,
+    isSessionSecretConfigured,
+  } = await import('../server/config/env.ts');
+
+  const envExample = fs.readFileSync(path.resolve(process.cwd(), '.env.example'), 'utf8');
+  assert.match(envExample, /^SESSION_SECRET=/m);
+
+  const prevSessionSecret = process.env.SESSION_SECRET;
+  const prevJwtSecret = process.env.JWT_SECRET;
+
+  try {
+    process.env.SESSION_SECRET = 'nexasua_session_secret_0123456789abcdef';
+    process.env.JWT_SECRET = 'legacy_jwt_secret_0123456789abcdef';
+
+    assert.equal(isSessionSecretConfigured(), true);
+    assert.equal(getSessionSecret(), 'nexasua_session_secret_0123456789abcdef');
+    assert.equal(getJwtSecret(), 'nexasua_session_secret_0123456789abcdef');
+    assert.equal(getEncryptionKey().length, 32);
+
+    const encrypted = encryptSecret('top-secret-totp-value');
+    assert.equal(decryptSecret(encrypted), 'top-secret-totp-value');
+
+    // Backwards-compatible fallback to JWT_SECRET when SESSION_SECRET is unset
+    delete process.env.SESSION_SECRET;
+    assert.equal(isSessionSecretConfigured(), true);
+    assert.equal(getSessionSecret(), 'legacy_jwt_secret_0123456789abcdef');
+
+    // Short (<16 char) secrets fall back to ephemeral runtime key
+    process.env.SESSION_SECRET = 'too-short';
+    process.env.JWT_SECRET = 'short';
+    assert.equal(isSessionSecretConfigured(), false);
+    assert.notEqual(getSessionSecret(), 'too-short');
+  } finally {
+    if (prevSessionSecret === undefined) {
+      delete process.env.SESSION_SECRET;
+    } else {
+      process.env.SESSION_SECRET = prevSessionSecret;
+    }
+    if (prevJwtSecret === undefined) {
+      delete process.env.JWT_SECRET;
+    } else {
+      process.env.JWT_SECRET = prevJwtSecret;
+    }
+  }
+});
+

@@ -1,17 +1,34 @@
 import crypto from 'crypto';
 
-const EPHEMERAL_JWT_SECRET = crypto.randomBytes(32).toString('hex');
+const EPHEMERAL_SESSION_SECRET = crypto.randomBytes(32).toString('hex');
 const EPHEMERAL_ENCRYPTION_KEY = crypto.randomBytes(32);
 
-export function getJwtSecret(): string {
-  return process.env.JWT_SECRET && process.env.JWT_SECRET.trim().length >= 16
-    ? process.env.JWT_SECRET.trim()
-    : EPHEMERAL_JWT_SECRET;
+function resolveConfiguredSessionSecret(): string {
+  const sessionSecret = process.env.SESSION_SECRET?.trim() || '';
+  if (sessionSecret.length >= 16) {
+    return sessionSecret;
+  }
+  const jwtSecret = process.env.JWT_SECRET?.trim() || '';
+  if (jwtSecret.length >= 16) {
+    return jwtSecret;
+  }
+  return '';
 }
 
+export function isSessionSecretConfigured(): boolean {
+  return resolveConfiguredSessionSecret().length >= 16;
+}
+
+export function getSessionSecret(): string {
+  return resolveConfiguredSessionSecret() || EPHEMERAL_SESSION_SECRET;
+}
+
+export const getJwtSecret = getSessionSecret;
+
 export function getEncryptionKey(): Buffer {
-  if (process.env.JWT_SECRET && process.env.JWT_SECRET.trim().length >= 16) {
-    return crypto.createHash('sha256').update(process.env.JWT_SECRET.trim()).digest();
+  const configured = resolveConfiguredSessionSecret();
+  if (configured) {
+    return crypto.createHash('sha256').update(configured).digest();
   }
   return EPHEMERAL_ENCRYPTION_KEY;
 }
@@ -111,12 +128,20 @@ export function getPlatformIntegrationsStatus(dbState: {
   const googleOAuthConfigured = isGoogleOAuthConfigured();
   const superAdminSecretsConfigured = getSuperAdminEnvCredentials().configured;
   const adminSecretsConfigured = getSchoolAdminEnvCredentials().configured;
+  const sessionSecretConfigured = isSessionSecretConfigured();
 
   return {
     mongodb: {
       name: 'MongoDB Atlas',
       status: dbState.status,
       detail: dbState.error || (dbState.status === 'Connected' ? 'Cluster connected' : 'Set MONGODB_URI in Secrets'),
+    },
+    sessionSecret: {
+      name: 'Session Signing Secret',
+      status: sessionSecretConfigured ? ('Connected' as IntegrationStatus) : ('Not Configured' as IntegrationStatus),
+      detail: sessionSecretConfigured
+        ? 'Configured via SESSION_SECRET'
+        : 'Recommended: Set SESSION_SECRET (32+ chars) in Secrets',
     },
     superAdminSecrets: {
       name: 'Super Admin Credentials Secret',

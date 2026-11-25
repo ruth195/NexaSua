@@ -53,7 +53,7 @@ export async function connectDatabase(): Promise<boolean> {
       dbState.error = undefined;
       mongoose.set('strictQuery', true);
       await mongoose.connect(uri, {
-        serverSelectionTimeoutMS: 8000,
+        serverSelectionTimeoutMS: 5000,
         maxPoolSize: 10,
       });
       dbState.status = 'Connected';

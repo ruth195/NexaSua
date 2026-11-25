@@ -47,7 +47,7 @@ async function connectDatabase() {
       dbState.error = void 0;
       mongoose.set("strictQuery", true);
       await mongoose.connect(uri, {
-        serverSelectionTimeoutMS: 8e3,
+        serverSelectionTimeoutMS: 5e3,
         maxPoolSize: 10
       });
       dbState.status = "Connected";
@@ -940,14 +940,30 @@ import QRCode from "qrcode";
 
 // server/config/env.ts
 import crypto from "crypto";
-var EPHEMERAL_JWT_SECRET = crypto.randomBytes(32).toString("hex");
+var EPHEMERAL_SESSION_SECRET = crypto.randomBytes(32).toString("hex");
 var EPHEMERAL_ENCRYPTION_KEY = crypto.randomBytes(32);
-function getJwtSecret() {
-  return process.env.JWT_SECRET && process.env.JWT_SECRET.trim().length >= 16 ? process.env.JWT_SECRET.trim() : EPHEMERAL_JWT_SECRET;
+function resolveConfiguredSessionSecret() {
+  const sessionSecret = process.env.SESSION_SECRET?.trim() || "";
+  if (sessionSecret.length >= 16) {
+    return sessionSecret;
+  }
+  const jwtSecret = process.env.JWT_SECRET?.trim() || "";
+  if (jwtSecret.length >= 16) {
+    return jwtSecret;
+  }
+  return "";
 }
+function isSessionSecretConfigured() {
+  return resolveConfiguredSessionSecret().length >= 16;
+}
+function getSessionSecret() {
+  return resolveConfiguredSessionSecret() || EPHEMERAL_SESSION_SECRET;
+}
+var getJwtSecret = getSessionSecret;
 function getEncryptionKey() {
-  if (process.env.JWT_SECRET && process.env.JWT_SECRET.trim().length >= 16) {
-    return crypto.createHash("sha256").update(process.env.JWT_SECRET.trim()).digest();
+  const configured = resolveConfiguredSessionSecret();
+  if (configured) {
+    return crypto.createHash("sha256").update(configured).digest();
   }
   return EPHEMERAL_ENCRYPTION_KEY;
 }
@@ -1017,11 +1033,17 @@ function getPlatformIntegrationsStatus(dbState2) {
   const googleOAuthConfigured = isGoogleOAuthConfigured();
   const superAdminSecretsConfigured = getSuperAdminEnvCredentials().configured;
   const adminSecretsConfigured = getSchoolAdminEnvCredentials().configured;
+  const sessionSecretConfigured = isSessionSecretConfigured();
   return {
     mongodb: {
       name: "MongoDB Atlas",
       status: dbState2.status,
       detail: dbState2.error || (dbState2.status === "Connected" ? "Cluster connected" : "Set MONGODB_URI in Secrets")
+    },
+    sessionSecret: {
+      name: "Session Signing Secret",
+      status: sessionSecretConfigured ? "Connected" : "Not Configured",
+      detail: sessionSecretConfigured ? "Configured via SESSION_SECRET" : "Recommended: Set SESSION_SECRET (32+ chars) in Secrets"
     },
     superAdminSecrets: {
       name: "Super Admin Credentials Secret",
@@ -7894,18 +7916,29 @@ function createApiApp() {
 // server.ts
 var __filename = fileURLToPath(import.meta.url);
 var __dirname = path2.dirname(__filename);
-async function startServer() {
+function startServer() {
   const app = createApiApp();
-  await connectDatabase();
-  startAutomationEngine();
   const isProd = process.env.NODE_ENV === "production";
   if (!isProd) {
-    const { createServer: createViteServer } = await import("vite");
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa"
+    let viteMiddleware = null;
+    const viteReadyPromise = import("vite").then(
+      ({ createServer: createViteServer }) => createViteServer({
+        server: { middlewareMode: true },
+        appType: "spa"
+      })
+    ).then((vite) => {
+      viteMiddleware = vite.middlewares;
+    }).catch((err) => {
+      console.error("Failed to initialize Vite dev middleware:", err);
     });
-    app.use(vite.middlewares);
+    app.use(async (req, res, next) => {
+      await viteReadyPromise;
+      if (viteMiddleware) {
+        viteMiddleware(req, res, next);
+        return;
+      }
+      next();
+    });
   } else {
     const distPath = path2.resolve(__dirname, "dist");
     app.use(express9.static(distPath));
@@ -7917,8 +7950,7 @@ async function startServer() {
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`NexaSua platform server listening on http://0.0.0.0:${PORT}`);
   });
+  void connectDatabase();
+  startAutomationEngine();
 }
-startServer().catch((err) => {
-  console.error("Failed to start NexaSua server:", err);
-  process.exit(1);
-});
+startServer();

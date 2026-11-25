@@ -8,21 +8,34 @@ import { startAutomationEngine } from './server/services/automationService.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function startServer() {
+function startServer() {
   const app = createApiApp();
-
-  // Warm initial MongoDB connection and run background automation interval on long-lived Node servers
-  await connectDatabase();
-  startAutomationEngine();
-
   const isProd = process.env.NODE_ENV === 'production';
+
   if (!isProd) {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
+    let viteMiddleware: express.RequestHandler | null = null;
+    const viteReadyPromise = import('vite')
+      .then(({ createServer: createViteServer }) =>
+        createViteServer({
+          server: { middlewareMode: true },
+          appType: 'spa',
+        })
+      )
+      .then((vite) => {
+        viteMiddleware = vite.middlewares;
+      })
+      .catch((err) => {
+        console.error('Failed to initialize Vite dev middleware:', err);
+      });
+
+    app.use(async (req, res, next) => {
+      await viteReadyPromise;
+      if (viteMiddleware) {
+        viteMiddleware(req, res, next);
+        return;
+      }
+      next();
     });
-    app.use(vite.middlewares);
   } else {
     const distPath = path.resolve(__dirname, 'dist');
     app.use(express.static(distPath));
@@ -35,9 +48,10 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`NexaSua platform server listening on http://0.0.0.0:${PORT}`);
   });
+
+  // Connect MongoDB Atlas & start background automation without blocking port binding
+  void connectDatabase();
+  startAutomationEngine();
 }
 
-startServer().catch((err) => {
-  console.error('Failed to start NexaSua server:', err);
-  process.exit(1);
-});
+startServer();
