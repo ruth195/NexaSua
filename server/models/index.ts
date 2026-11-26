@@ -44,8 +44,14 @@ const promoOfferSchema = new Schema(
   {
     code: { type: String, required: true, uppercase: true, trim: true },
     description: { type: String, required: true },
-    discountPercent: { type: Number, required: true, min: 1, max: 100 },
+    discountType: { type: String, enum: ['PERCENT', 'FIXED_GHS'], default: 'PERCENT' },
+    discountPercent: { type: Number, default: 0, min: 0, max: 100 },
+    discountAmountGhs: { type: Number, default: 0, min: 0 },
     applicablePlan: { type: String, enum: ['ALL', 'CORE', 'COMPLETE'], default: 'ALL' },
+    assignedSchoolId: { type: Schema.Types.ObjectId, ref: 'School', default: null },
+    assignedSchoolName: { type: String, default: '' },
+    maxUses: { type: Number, default: null, min: 1 },
+    usedCount: { type: Number, default: 0, min: 0 },
     active: { type: Boolean, default: true },
     expiresAt: { type: Date, default: null },
   },
@@ -656,6 +662,24 @@ const feeReminderSchema = new Schema(
   { timestamps: true }
 );
 
+const feeCouponSchema = new Schema(
+  {
+    schoolId: { type: Schema.Types.ObjectId, ref: 'School', required: true, index: true },
+    code: { type: String, required: true, uppercase: true, trim: true },
+    description: { type: String, required: true, trim: true },
+    discountType: { type: String, enum: ['PERCENT', 'FIXED_GHS'], default: 'PERCENT' },
+    discountPercent: { type: Number, default: 0, min: 0, max: 100 },
+    discountAmountGhs: { type: Number, default: 0, min: 0 },
+    maxUses: { type: Number, default: null, min: 1 },
+    usedCount: { type: Number, default: 0, min: 0 },
+    active: { type: Boolean, default: true },
+    expiresAt: { type: Date, default: null },
+    createdBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  },
+  { timestamps: true }
+);
+feeCouponSchema.index({ schoolId: 1, code: 1 }, { unique: true });
+
 // 11. Announcements & Notifications
 const announcementSchema = new Schema(
   {
@@ -904,6 +928,8 @@ export const FinancialLedgerModel =
   mongoose.models.FinancialLedger || mongoose.model('FinancialLedger', financialLedgerSchema);
 export const FeeReminderModel =
   mongoose.models.FeeReminder || mongoose.model('FeeReminder', feeReminderSchema);
+export const FeeCouponModel =
+  mongoose.models.FeeCoupon || mongoose.model('FeeCoupon', feeCouponSchema);
 export const AnnouncementModel =
   mongoose.models.Announcement || mongoose.model('Announcement', announcementSchema);
 export const NotificationModel =

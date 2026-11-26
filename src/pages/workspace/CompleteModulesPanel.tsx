@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Download, Lock } from 'lucide-react';
+import { Copy, Download, Lock, Pause, Play, Ticket, Trash2 } from 'lucide-react';
 import { EmptyState, formatGhanaDate, formatGhs } from '../../components/BrandLogo';
 import { apiFetch, downloadProtectedFile } from '../../lib/api';
 import type { AuthUser, SubscriptionSummary } from '../../types/nexasua';
@@ -45,10 +45,12 @@ export function FinancePanel({ user }: { user: AuthUser }) {
   const [invoices, setInvoices] = useState<Array<any>>([]);
   const [payments, setPayments] = useState<Array<any>>([]);
   const [reminders, setReminders] = useState<Array<any>>([]);
+  const [feeCoupons, setFeeCoupons] = useState<Array<any>>([]);
   const [analytics, setAnalytics] = useState<any>(null);
   const [students, setStudents] = useState<Array<any>>([]);
   const [years, setYears] = useState<Array<any>>([]);
   const [terms, setTerms] = useState<Array<any>>([]);
+  const [copiedCode, setCopiedCode] = useState('');
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
@@ -70,6 +72,17 @@ export function FinancePanel({ user }: { user: AuthUser }) {
     amountGhs: 850,
     discountGhs: 0,
     waiverGhs: 0,
+    couponCode: '',
+  });
+
+  const [couponForm, setCouponForm] = useState({
+    code: '',
+    description: '',
+    discountType: 'PERCENT' as 'PERCENT' | 'FIXED_GHS',
+    discountPercent: 15,
+    discountAmountGhs: 100,
+    maxUses: '',
+    expiresAt: '',
   });
 
   const [payForm, setPayForm] = useState({
@@ -87,7 +100,7 @@ export function FinancePanel({ user }: { user: AuthUser }) {
   });
 
   const load = async () => {
-    const [stRes, ayRes, fsRes, invRes, payRes, remRes, anRes] = await Promise.all([
+    const [stRes, ayRes, fsRes, invRes, payRes, remRes, anRes, cpRes] = await Promise.all([
       apiFetch<{ students: Array<any> }>('/api/school/students?limit=100'),
       apiFetch<{ academicYears: Array<any>; terms: Array<any> }>('/api/school/academic-years'),
       apiFetch<{ structures: Array<any> }>('/api/complete/fee-structures'),
@@ -95,6 +108,7 @@ export function FinancePanel({ user }: { user: AuthUser }) {
       apiFetch<{ payments: Array<any> }>('/api/complete/payments'),
       apiFetch<{ reminders: Array<any> }>('/api/complete/reminders'),
       apiFetch('/api/complete/analytics'),
+      apiFetch<{ coupons: Array<any> }>('/api/complete/fee-coupons').catch(() => ({ coupons: [] })),
     ]);
     setStudents(stRes.students);
     setYears(ayRes.academicYears);
@@ -104,6 +118,7 @@ export function FinancePanel({ user }: { user: AuthUser }) {
     setPayments(payRes.payments);
     setReminders(remRes.reminders);
     setAnalytics(anRes);
+    setFeeCoupons(cpRes.coupons || []);
 
     if (ayRes.academicYears[0] && !feeForm.academicYearId) {
       setFeeForm((p) => ({ ...p, academicYearId: ayRes.academicYears[0]._id }));
@@ -235,34 +250,36 @@ export function FinancePanel({ user }: { user: AuthUser }) {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              void run(
-                () =>
-                  apiFetch('/api/complete/invoices', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                      studentId: invForm.studentId,
-                      academicYearId: invForm.academicYearId,
-                      termId: invForm.termId,
-                      dueDate: invForm.dueDate,
-                      discountGhs: invForm.discountGhs,
-                      waiverGhs: invForm.waiverGhs,
-                      items: [
-                        {
-                          description: invForm.description,
-                          category: invForm.category,
-                          amountGhs: invForm.amountGhs,
-                        },
-                      ],
-                    }),
+              void run(async () => {
+                await apiFetch('/api/complete/invoices', {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    studentId: invForm.studentId,
+                    academicYearId: invForm.academicYearId,
+                    termId: invForm.termId,
+                    dueDate: invForm.dueDate,
+                    discountGhs: invForm.discountGhs,
+                    waiverGhs: invForm.waiverGhs,
+                    ...(invForm.couponCode.trim()
+                      ? { couponCode: invForm.couponCode.trim().toUpperCase() }
+                      : {}),
+                    items: [
+                      {
+                        description: invForm.description,
+                        category: invForm.category,
+                        amountGhs: invForm.amountGhs,
+                      },
+                    ],
                   }),
-                'Student fee invoice created.'
-              );
+                });
+                setInvForm((p) => ({ ...p, couponCode: '' }));
+              }, 'Student fee invoice created.');
             }}
             className="bg-white border border-slate-200 rounded-xl p-6 space-y-3"
           >
             <h3 className="text-base font-bold text-[#102846]">Issue Student Fee Invoice</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <select required value={invForm.studentId} onChange={(e) => setInvForm({ ...invForm, studentId: e.target.value })} className="col-span-2 rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <select required value={invForm.studentId} onChange={(e) => setInvForm({ ...invForm, studentId: e.target.value })} className="sm:col-span-2 rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white">
                 <option value="">Select Student</option>
                 {students.map((st) => <option key={st._id} value={st._id}>{st.fullName} ({st.admissionNumber})</option>)}
               </select>
@@ -270,9 +287,283 @@ export function FinancePanel({ user }: { user: AuthUser }) {
               <input required type="number" min={1} step="0.01" placeholder="Amount GH₵" value={invForm.amountGhs} onChange={(e) => setInvForm({ ...invForm, amountGhs: Number(e.target.value) })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono" />
               <input type="number" min={0} placeholder="Discount GH₵" value={invForm.discountGhs} onChange={(e) => setInvForm({ ...invForm, discountGhs: Number(e.target.value) })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono" />
               <input type="date" value={invForm.dueDate} onChange={(e) => setInvForm({ ...invForm, dueDate: e.target.value })} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-              <button type="submit" className="col-span-2 rounded-lg bg-[#148D82] px-4 py-2 text-sm font-semibold text-white">Issue Invoice</button>
+              <div className="sm:col-span-2 flex flex-col sm:flex-row gap-2">
+                <input
+                  placeholder="Fee Coupon Code (optional)"
+                  value={invForm.couponCode}
+                  onChange={(e) =>
+                    setInvForm({
+                      ...invForm,
+                      couponCode: e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''),
+                    })
+                  }
+                  className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono uppercase"
+                />
+                {feeCoupons.filter((c) => c.active).length > 0 && (
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) setInvForm((p) => ({ ...p, couponCode: e.target.value }));
+                    }}
+                    className="rounded-lg border border-slate-300 px-3 py-2 text-xs bg-white"
+                  >
+                    <option value="">Pick active coupon...</option>
+                    {feeCoupons
+                      .filter((c) => c.active)
+                      .map((c) => (
+                        <option key={c._id} value={c.code}>
+                          {c.code} (
+                          {c.discountType === 'FIXED_GHS'
+                            ? `${formatGhs(c.discountAmountGhs)}`
+                            : `${c.discountPercent}%`}
+                          )
+                        </option>
+                      ))}
+                  </select>
+                )}
+              </div>
+              <button type="submit" className="sm:col-span-2 rounded-lg bg-[#148D82] px-4 py-2.5 text-sm font-semibold text-white">Issue Invoice</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {canMutate && (
+        <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-base font-bold text-[#102846] inline-flex items-center gap-2">
+                <Ticket className="w-4 h-4 text-[#148D82]" /> Student Fee Coupons &amp; Vouchers
+              </h3>
+              <p className="text-xs text-[#64748B] mt-0.5">
+                Create school fee discount vouchers (e.g. sibling, PTA, or bursary grants) and apply
+                them when issuing invoices.
+              </p>
+            </div>
+          </div>
+
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              void run(async () => {
+                await apiFetch('/api/complete/fee-coupons', {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    code: couponForm.code.trim().toUpperCase(),
+                    description: couponForm.description.trim(),
+                    discountType: couponForm.discountType,
+                    discountPercent:
+                      couponForm.discountType === 'PERCENT' ? Number(couponForm.discountPercent) : 0,
+                    discountAmountGhs:
+                      couponForm.discountType === 'FIXED_GHS'
+                        ? Number(couponForm.discountAmountGhs)
+                        : 0,
+                    maxUses: couponForm.maxUses ? Number(couponForm.maxUses) : null,
+                    expiresAt: couponForm.expiresAt || null,
+                  }),
+                });
+                setCouponForm({
+                  code: '',
+                  description: '',
+                  discountType: 'PERCENT',
+                  discountPercent: 15,
+                  discountAmountGhs: 100,
+                  maxUses: '',
+                  expiresAt: '',
+                });
+              }, 'Student fee coupon created.');
+            }}
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3"
+          >
+            <div className="flex gap-1.5">
+              <input
+                required
+                placeholder="Code (e.g. SIBLING15)"
+                value={couponForm.code}
+                onChange={(e) =>
+                  setCouponForm({
+                    ...couponForm,
+                    code: e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''),
+                  })
+                }
+                className="flex-1 min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono uppercase"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const s = Math.random().toString(36).slice(2, 6).toUpperCase();
+                  setCouponForm((p) => ({ ...p, code: `FEE-${s}` }));
+                }}
+                className="rounded-lg border border-slate-300 px-2.5 py-2 text-xs font-semibold text-[#102846] hover:bg-[#FBF8F1]"
+              >
+                Auto
+              </button>
+            </div>
+
+            <select
+              value={couponForm.discountType}
+              onChange={(e) =>
+                setCouponForm({
+                  ...couponForm,
+                  discountType: e.target.value as 'PERCENT' | 'FIXED_GHS',
+                })
+              }
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+            >
+              <option value="PERCENT">Percentage (% off)</option>
+              <option value="FIXED_GHS">Fixed Amount (GH₵ off)</option>
+            </select>
+
+            {couponForm.discountType === 'PERCENT' ? (
+              <input
+                required
+                type="number"
+                min={1}
+                max={100}
+                placeholder="Discount %"
+                value={couponForm.discountPercent}
+                onChange={(e) =>
+                  setCouponForm({ ...couponForm, discountPercent: Number(e.target.value) })
+                }
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono"
+              />
+            ) : (
+              <input
+                required
+                type="number"
+                min={1}
+                step="0.01"
+                placeholder="Amount GH₵"
+                value={couponForm.discountAmountGhs}
+                onChange={(e) =>
+                  setCouponForm({ ...couponForm, discountAmountGhs: Number(e.target.value) })
+                }
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono"
+              />
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              <input
+                type="number"
+                min={1}
+                placeholder="Max uses"
+                value={couponForm.maxUses}
+                onChange={(e) => setCouponForm({ ...couponForm, maxUses: e.target.value })}
+                className="rounded-lg border border-slate-300 px-2.5 py-2 text-xs font-mono"
+              />
+              <input
+                type="date"
+                value={couponForm.expiresAt}
+                onChange={(e) => setCouponForm({ ...couponForm, expiresAt: e.target.value })}
+                className="rounded-lg border border-slate-300 px-2 py-2 text-xs font-mono"
+              />
+            </div>
+
+            <input
+              required
+              placeholder="Coupon Reason (e.g. PTA Merit Voucher)"
+              value={couponForm.description}
+              onChange={(e) => setCouponForm({ ...couponForm, description: e.target.value })}
+              className="sm:col-span-2 lg:col-span-3 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+            />
+            <button
+              type="submit"
+              className="rounded-lg bg-[#102846] px-4 py-2 text-sm font-semibold text-white hover:bg-[#193a63]"
+            >
+              Create Fee Coupon
+            </button>
+          </form>
+
+          {feeCoupons.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+              {feeCoupons.map((c) => (
+                <div
+                  key={c._id}
+                  className="rounded-lg border border-slate-200 bg-[#FBF8F1] p-3 flex flex-wrap items-center justify-between gap-2 text-xs"
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono font-bold text-[#102846]">{c.code}</span>
+                      <span className="font-semibold text-[#148D82]">
+                        {c.discountType === 'FIXED_GHS'
+                          ? `${formatGhs(c.discountAmountGhs)} off`
+                          : `${c.discountPercent}% off`}
+                      </span>
+                      <span
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                          c.active ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'
+                        }`}
+                      >
+                        {c.active ? 'Active' : 'Paused'}
+                      </span>
+                    </div>
+                    <div className="text-[#64748B] mt-0.5">
+                      {c.description} · Used {c.usedCount ?? 0}
+                      {c.maxUses ? `/${c.maxUses}` : ''}
+                      {c.expiresAt ? ` · Exp ${formatGhanaDate(c.expiresAt)}` : ''}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (navigator.clipboard?.writeText) {
+                          void navigator.clipboard.writeText(c.code);
+                        }
+                        setCopiedCode(c.code);
+                        window.setTimeout(() => setCopiedCode(''), 2000);
+                      }}
+                      className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-[#102846]"
+                    >
+                      <Copy className="w-3 h-3 inline mr-1" />
+                      {copiedCode === c.code ? 'Copied' : 'Copy'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void run(
+                          () =>
+                            apiFetch(`/api/complete/fee-coupons/${c._id}/toggle`, {
+                              method: 'PATCH',
+                              body: JSON.stringify({}),
+                            }),
+                          `Fee coupon ${c.code} updated.`
+                        )
+                      }
+                      className="rounded border border-slate-300 bg-white px-2 py-1 text-[11px] font-semibold text-[#102846]"
+                    >
+                      {c.active ? (
+                        <>
+                          <Pause className="w-3 h-3 inline mr-1" />
+                          Pause
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-3 h-3 inline mr-1" />
+                          Activate
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void run(
+                          () =>
+                            apiFetch(`/api/complete/fee-coupons/${c._id}`, {
+                              method: 'DELETE',
+                            }),
+                          `Fee coupon ${c.code} deleted.`
+                        )
+                      }
+                      className="rounded border border-red-200 bg-white px-2 py-1 text-[11px] font-semibold text-red-700"
+                    >
+                      <Trash2 className="w-3 h-3 inline" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

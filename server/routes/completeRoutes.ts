@@ -17,6 +17,7 @@ import {
   AdmissionApplicationModel,
   AnnouncementModel,
   ClassRoomModel,
+  FeeCouponModel,
   FeeInvoiceModel,
   FeePaymentModel,
   FeeReminderModel,
@@ -113,6 +114,125 @@ router.post(
 );
 
 // =====================
+// 1B. SCHOOL FEE COUPONS (Student Fee Discounts / Vouchers)
+// =====================
+router.get(
+  '/fee-coupons',
+  requireRole('SCHOOL_ADMIN', 'HEADTEACHER', 'BURSAR', 'ADMIN_STAFF'),
+  async (req: AuthenticatedRequest, res) => {
+    const coupons = await FeeCouponModel.find({ schoolId: req.authUser!.schoolId })
+      .sort({ createdAt: -1 })
+      .lean();
+    res.json({ coupons });
+  }
+);
+
+const feeCouponSchema = z.object({
+  code: z
+    .string()
+    .min(3)
+    .max(30)
+    .regex(/^[A-Za-z0-9_-]+$/, 'Coupon code can only use letters, numbers, hyphens, or underscores.'),
+  description: z.string().min(3).max(200),
+  discountType: z.enum(['PERCENT', 'FIXED_GHS']).default('PERCENT'),
+  discountPercent: z.number().min(0).max(100).default(0),
+  discountAmountGhs: z.number().min(0).max(100000).default(0),
+  maxUses: z.number().int().min(1).max(100000).nullable().optional(),
+  expiresAt: z.string().nullable().optional(),
+});
+
+router.post(
+  '/fee-coupons',
+  requireRole('SCHOOL_ADMIN', 'BURSAR'),
+  async (req: AuthenticatedRequest, res) => {
+    const body = parseBody(feeCouponSchema, req, res);
+    if (!body) return;
+    if (body.discountType === 'PERCENT' && body.discountPercent < 1) {
+      res.status(400).json({ error: 'Percentage discount must be between 1% and 100%.' });
+      return;
+    }
+    if (body.discountType === 'FIXED_GHS' && body.discountAmountGhs <= 0) {
+      res.status(400).json({ error: 'Fixed GH₵ discount must be greater than 0.' });
+      return;
+    }
+
+    const schoolId = req.authUser!.schoolId!;
+    const code = body.code.trim().toUpperCase();
+    const exists = await FeeCouponModel.exists({ schoolId, code });
+    if (exists) {
+      res.status(409).json({ error: `Fee coupon "${code}" already exists.` });
+      return;
+    }
+
+    const coupon = await FeeCouponModel.create({
+      schoolId,
+      code,
+      description: body.description.trim(),
+      discountType: body.discountType,
+      discountPercent: body.discountType === 'PERCENT' ? body.discountPercent : 0,
+      discountAmountGhs: body.discountType === 'FIXED_GHS' ? body.discountAmountGhs : 0,
+      maxUses: body.maxUses ?? null,
+      expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
+      createdBy: req.authUser!._id,
+    });
+
+    await writeAuditLog({
+      schoolId,
+      userId: req.authUser!._id,
+      userEmail: req.authUser!.email,
+      userRole: req.authUser!.role,
+      action: 'FEE_COUPON_CREATED',
+      resourceType: 'FeeCoupon',
+      resourceId: String(coupon._id),
+      details: { code },
+      ipAddress: req.ip,
+    });
+
+    res.status(201).json({ coupon });
+  }
+);
+
+router.patch(
+  '/fee-coupons/:id/toggle',
+  requireRole('SCHOOL_ADMIN', 'BURSAR'),
+  async (req: AuthenticatedRequest, res) => {
+    const id = validObjectId(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: 'Invalid coupon ID.' });
+      return;
+    }
+    const schoolId = req.authUser!.schoolId!;
+    const coupon = await FeeCouponModel.findOne({ _id: id, schoolId });
+    if (!coupon) {
+      res.status(404).json({ error: 'Fee coupon not found.' });
+      return;
+    }
+    coupon.active = !coupon.active;
+    await coupon.save();
+    res.json({ coupon });
+  }
+);
+
+router.delete(
+  '/fee-coupons/:id',
+  requireRole('SCHOOL_ADMIN', 'BURSAR'),
+  async (req: AuthenticatedRequest, res) => {
+    const id = validObjectId(req.params.id);
+    if (!id) {
+      res.status(400).json({ error: 'Invalid coupon ID.' });
+      return;
+    }
+    const schoolId = req.authUser!.schoolId!;
+    const deleted = await FeeCouponModel.findOneAndDelete({ _id: id, schoolId });
+    if (!deleted) {
+      res.status(404).json({ error: 'Fee coupon not found.' });
+      return;
+    }
+    res.json({ ok: true });
+  }
+);
+
+// =====================
 // 2. INVOICES & LEDGER
 // =====================
 router.get('/invoices', async (req: AuthenticatedRequest, res) => {
@@ -160,6 +280,7 @@ const createInvoiceSchema = z.object({
   dueDate: z.string().min(8).max(20),
   discountGhs: z.number().min(0).default(0),
   waiverGhs: z.number().min(0).default(0),
+  couponCode: z.string().max(40).optional(),
   notes: z.string().max(400).optional(),
   items: z
     .array(
@@ -196,7 +317,33 @@ router.post(
     const subtotalGhs = roundCurrency(
       body.items.reduce((sum, item) => sum + roundCurrency(item.amountGhs), 0)
     );
-    const discountGhs = roundCurrency(body.discountGhs);
+    let couponDiscountGhs = 0;
+    let appliedFeeCouponCode = '';
+    if (body.couponCode && body.couponCode.trim()) {
+      const code = body.couponCode.trim().toUpperCase();
+      const coupon = await FeeCouponModel.findOne({ schoolId, code });
+      if (!coupon || !coupon.active) {
+        res.status(400).json({ error: `Fee coupon "${code}" is invalid or inactive.` });
+        return;
+      }
+      if (coupon.expiresAt && new Date(coupon.expiresAt).getTime() < Date.now()) {
+        res.status(400).json({ error: `Fee coupon "${code}" has expired.` });
+        return;
+      }
+      if (typeof coupon.maxUses === 'number' && coupon.maxUses > 0 && coupon.usedCount >= coupon.maxUses) {
+        res.status(400).json({ error: `Fee coupon "${code}" has reached its usage limit.` });
+        return;
+      }
+      couponDiscountGhs =
+        coupon.discountType === 'FIXED_GHS'
+          ? roundCurrency(Math.min(subtotalGhs, coupon.discountAmountGhs || 0))
+          : roundCurrency(subtotalGhs * ((coupon.discountPercent || 0) / 100));
+      coupon.usedCount += 1;
+      await coupon.save();
+      appliedFeeCouponCode = coupon.code;
+    }
+
+    const discountGhs = roundCurrency(body.discountGhs + couponDiscountGhs);
     const waiverGhs = roundCurrency(body.waiverGhs);
     const totalGhs = roundCurrency(Math.max(0, subtotalGhs - discountGhs - waiverGhs));
 
@@ -216,7 +363,9 @@ router.post(
       balanceGhs: totalGhs,
       dueDate: body.dueDate,
       status: totalGhs === 0 ? 'PAID' : 'UNPAID',
-      notes: body.notes || '',
+      notes: appliedFeeCouponCode
+        ? `${body.notes ? `${body.notes} · ` : ''}Coupon ${appliedFeeCouponCode} applied`
+        : body.notes || '',
       createdBy: req.authUser!._id,
     });
 
@@ -237,7 +386,9 @@ router.post(
         studentId,
         invoiceId: invoice._id,
         amountGhs: -discountGhs,
-        description: `Discount on ${invoiceNumber}`,
+        description: appliedFeeCouponCode
+          ? `Discount & Coupon (${appliedFeeCouponCode}) on ${invoiceNumber}`
+          : `Discount on ${invoiceNumber}`,
         createdBy: req.authUser!._id,
       });
     }

@@ -35,7 +35,11 @@ import {
   initializePaystackTransaction,
   verifyPaystackTransaction,
 } from '../services/paystackService.js';
-import { calculateSubscriptionPrice, ensureSystemConfig } from '../services/pricingEngine.js';
+import {
+  calculateSubscriptionPrice,
+  ensureSystemConfig,
+  validateCouponForSchool,
+} from '../services/pricingEngine.js';
 import { hashPassword, writeAuditLog } from '../services/securityService.js';
 
 const router = express.Router();
@@ -1262,6 +1266,26 @@ router.get(
       ensureSystemConfig(),
     ]);
 
+    const assignedCoupons = (cfg.promotionalOffers || [])
+      .filter((o: any) => {
+        if (!o.active) return false;
+        if (!o.assignedSchoolId || String(o.assignedSchoolId) !== String(schoolId)) return false;
+        if (o.expiresAt && new Date(o.expiresAt).getTime() < Date.now()) return false;
+        if (typeof o.maxUses === 'number' && o.maxUses > 0 && (o.usedCount ?? 0) >= o.maxUses) {
+          return false;
+        }
+        return true;
+      })
+      .map((o: any) => ({
+        code: o.code,
+        description: o.description,
+        discountType: o.discountType || 'PERCENT',
+        discountPercent: o.discountPercent || 0,
+        discountAmountGhs: o.discountAmountGhs || 0,
+        applicablePlan: o.applicablePlan || 'ALL',
+        expiresAt: o.expiresAt || null,
+      }));
+
     res.json({
       subscription: sub,
       invoices,
@@ -1269,6 +1293,65 @@ router.get(
       pricingBands: cfg.pricingBands,
       planCatalog: cfg.planCatalog,
       threeTermDiscountPercent: cfg.threeTermDiscountPercent,
+      assignedCoupons,
+    });
+  }
+);
+
+const validateCouponSchema = z.object({
+  promoCode: z.string().min(2).max(40),
+  plan: z.enum(['CORE', 'COMPLETE']),
+  billingCycle: z.enum(['TERM', 'THREE_TERMS']).default('TERM'),
+});
+
+router.post(
+  '/subscription/validate-coupon',
+  requireRole('SCHOOL_ADMIN', 'HEADTEACHER', 'BURSAR'),
+  async (req: AuthenticatedRequest, res) => {
+    const body = parseBody(validateCouponSchema, req, res);
+    if (!body) return;
+
+    const schoolId = req.authUser!.schoolId!;
+    const [school, activeStudents, cfg] = await Promise.all([
+      SchoolModel.findById(schoolId),
+      StudentModel.countDocuments({ schoolId, status: 'ACTIVE' }),
+      ensureSystemConfig(),
+    ]);
+
+    const check = validateCouponForSchool({
+      coupons: cfg.promotionalOffers || [],
+      code: body.promoCode,
+      plan: body.plan,
+      schoolId,
+    });
+
+    if (!check.valid) {
+      res.status(400).json({ error: check.error });
+      return;
+    }
+
+    const population = Math.max(activeStudents, school!.studentPopulationEstimate || 1);
+    const quote = calculateSubscriptionPrice({
+      studentCount: population,
+      plan: body.plan,
+      billingCycle: body.billingCycle,
+      bands: cfg.pricingBands as unknown as Parameters<typeof calculateSubscriptionPrice>[0]['bands'],
+      threeTermDiscountPercent: cfg.threeTermDiscountPercent,
+      promoDiscountPercent: check.promoDiscountPercent,
+      promoFixedDiscountGhs: check.promoFixedDiscountGhs,
+    });
+
+    res.json({
+      valid: true,
+      coupon: {
+        code: check.coupon.code,
+        description: check.coupon.description || '',
+        discountType: check.coupon.discountType || 'PERCENT',
+        discountPercent: check.promoDiscountPercent,
+        discountAmountGhs: check.promoFixedDiscountGhs,
+        applicablePlan: check.coupon.applicablePlan || 'ALL',
+      },
+      quote,
     });
   }
 );
@@ -1310,14 +1393,24 @@ router.post(
     ]);
 
     const population = Math.max(activeStudents, school!.studentPopulationEstimate || 1);
-    let promoPercent = 0;
-    if (body.promoCode) {
-      const code = body.promoCode.trim().toUpperCase();
-      const offer = cfg.promotionalOffers.find(
-        (o: { code: string; active: boolean; applicablePlan: string; discountPercent: number }) =>
-          o.code === code && o.active && (o.applicablePlan === 'ALL' || o.applicablePlan === body.plan)
-      );
-      if (offer) promoPercent = offer.discountPercent;
+    let promoDiscountPercent = 0;
+    let promoFixedDiscountGhs = 0;
+    let appliedCouponCode = '';
+
+    if (body.promoCode && body.promoCode.trim()) {
+      const check = validateCouponForSchool({
+        coupons: cfg.promotionalOffers || [],
+        code: body.promoCode,
+        plan: body.plan,
+        schoolId,
+      });
+      if (!check.valid) {
+        res.status(400).json({ error: check.error });
+        return;
+      }
+      promoDiscountPercent = check.promoDiscountPercent;
+      promoFixedDiscountGhs = check.promoFixedDiscountGhs;
+      appliedCouponCode = check.coupon.code;
     }
 
     const quote = calculateSubscriptionPrice({
@@ -1326,7 +1419,8 @@ router.post(
       billingCycle: body.billingCycle,
       bands: cfg.pricingBands as unknown as Parameters<typeof calculateSubscriptionPrice>[0]['bands'],
       threeTermDiscountPercent: cfg.threeTermDiscountPercent,
-      promoDiscountPercent: promoPercent,
+      promoDiscountPercent,
+      promoFixedDiscountGhs,
     });
 
     if (quote.isCustomQuote || quote.netPayableGhs === null) {
@@ -1336,8 +1430,67 @@ router.post(
       return;
     }
 
+    if (appliedCouponCode) {
+      const targetOffer = cfg.promotionalOffers.find(
+        (o: { code: string }) => o.code.toUpperCase() === appliedCouponCode
+      );
+      if (targetOffer) {
+        targetOffer.usedCount = Number(targetOffer.usedCount || 0) + 1;
+        await cfg.save();
+      }
+    }
+
     const invoiceNumber = `SUB-${Date.now().toString().slice(-6)}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
     const paystackRef = `NXS-SUB-${crypto.randomBytes(8).toString('hex').toUpperCase()}`;
+
+    if (quote.netPayableGhs === 0) {
+      const now = new Date();
+      const days = body.billingCycle === 'THREE_TERMS' ? 365 : 120;
+      const futureVac =
+        body.nextTermVacationDate ||
+        (school?.termVacationDate && school.termVacationDate > getAccraTodayDateString(now)
+          ? school.termVacationDate
+          : new Date(now.getTime() + days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+      const end = new Date(`${futureVac}T23:59:59.000Z`);
+
+      const invoice = await SubscriptionInvoiceModel.create({
+        schoolId,
+        invoiceNumber,
+        plan: body.plan,
+        billingCycle: body.billingCycle,
+        studentCountAtBilling: population,
+        amountGhs: 0,
+        discountAppliedGhs: quote.threeTermDiscountGhs + quote.promoDiscountGhs,
+        promoCode: appliedCouponCode,
+        status: 'PAID',
+        paidAt: now,
+        paymentMethod: `Coupon (${appliedCouponCode})`,
+        dueDate: now,
+        paystackReference: paystackRef,
+      });
+
+      await SubscriptionModel.findOneAndUpdate(
+        { schoolId },
+        {
+          plan: body.plan,
+          status: 'ACTIVE',
+          billingCycle: body.billingCycle,
+          currentPeriodStart: now,
+          currentPeriodEnd: end,
+          termVacationDate: futureVac,
+          portalClosedReason: '',
+          amountDueGhs: 0,
+        }
+      );
+
+      res.json({
+        invoice,
+        paystackConfigured: false,
+        activatedFree: true,
+        message: `Coupon ${appliedCouponCode} covered 100% — NexaSua ${body.plan} activated immediately!`,
+      });
+      return;
+    }
 
     const invoice = await SubscriptionInvoiceModel.create({
       schoolId,
@@ -1347,7 +1500,7 @@ router.post(
       studentCountAtBilling: population,
       amountGhs: quote.netPayableGhs,
       discountAppliedGhs: quote.threeTermDiscountGhs + quote.promoDiscountGhs,
-      promoCode: body.promoCode || '',
+      promoCode: appliedCouponCode,
       status: 'PENDING',
       dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
       paystackReference: paystackRef,

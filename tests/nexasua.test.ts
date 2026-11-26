@@ -541,3 +541,161 @@ test('Session Secret: SESSION_SECRET takes precedence, falls back to JWT_SECRET,
   }
 });
 
+test('Coupons & Pricing: percent, fixed GH₵, 100% free, school assignment, plan & expiry enforcement', async () => {
+  const { validateCouponForSchool } = await import('../server/services/pricingEngine.ts');
+  const { FeeCouponModel } = await import('../server/models/index.ts');
+  const now = new Date('2026-11-26T12:00:00.000Z');
+
+  assert.ok(FeeCouponModel);
+
+  const coupons = [
+    {
+      code: 'GIFT100',
+      description: '100% free term grant',
+      discountType: 'PERCENT',
+      discountPercent: 100,
+      applicablePlan: 'COMPLETE',
+      assignedSchoolId: 'school-a',
+      maxUses: 1,
+      usedCount: 0,
+      active: true,
+      expiresAt: '2026-12-31T23:59:59.000Z',
+    },
+    {
+      code: 'GH200OFF',
+      description: 'GH₵ 200 voucher',
+      discountType: 'FIXED_GHS',
+      discountAmountGhs: 200,
+      applicablePlan: 'ALL',
+      assignedSchoolId: null,
+      maxUses: null,
+      usedCount: 2,
+      active: true,
+      expiresAt: null,
+    },
+    {
+      code: 'EXPIRED50',
+      discountType: 'PERCENT',
+      discountPercent: 50,
+      applicablePlan: 'ALL',
+      active: true,
+      expiresAt: '2026-11-01T00:00:00.000Z',
+    },
+    {
+      code: 'MAXEDOUT',
+      discountType: 'PERCENT',
+      discountPercent: 25,
+      applicablePlan: 'ALL',
+      maxUses: 3,
+      usedCount: 3,
+      active: true,
+    },
+  ];
+
+  // Valid assigned 100% coupon
+  const ok100 = validateCouponForSchool({
+    coupons,
+    code: 'gift100',
+    plan: 'COMPLETE',
+    schoolId: 'school-a',
+    now,
+  });
+  assert.equal(ok100.valid, true);
+  if (ok100.valid) {
+    const freeQuote = calculateSubscriptionPrice({
+      studentCount: 200,
+      plan: 'COMPLETE',
+      billingCycle: 'TERM',
+      promoDiscountPercent: ok100.promoDiscountPercent,
+      promoFixedDiscountGhs: ok100.promoFixedDiscountGhs,
+    });
+    assert.equal(freeQuote.netPayableGhs, 0);
+  }
+
+  // Wrong school rejected
+  const wrongSchool = validateCouponForSchool({
+    coupons,
+    code: 'GIFT100',
+    plan: 'COMPLETE',
+    schoolId: 'school-b',
+    now,
+  });
+  assert.equal(wrongSchool.valid, false);
+
+  // Plan mismatch rejected
+  const wrongPlan = validateCouponForSchool({
+    coupons,
+    code: 'GIFT100',
+    plan: 'CORE',
+    schoolId: 'school-a',
+    now,
+  });
+  assert.equal(wrongPlan.valid, false);
+
+  // Fixed GH₵ voucher
+  const fixedRes = validateCouponForSchool({
+    coupons,
+    code: 'GH200OFF',
+    plan: 'CORE',
+    schoolId: 'school-b',
+    now,
+  });
+  assert.equal(fixedRes.valid, true);
+  if (fixedRes.valid) {
+    const quote = calculateSubscriptionPrice({
+      studentCount: 120,
+      plan: 'CORE',
+      billingCycle: 'TERM',
+      promoDiscountPercent: fixedRes.promoDiscountPercent,
+      promoFixedDiscountGhs: fixedRes.promoFixedDiscountGhs,
+    });
+    // Core 1-150 = 350 - 200 = 150
+    assert.equal(quote.netPayableGhs, 150);
+  }
+
+  // Expired and maxed-out coupons rejected
+  assert.equal(
+    validateCouponForSchool({ coupons, code: 'EXPIRED50', plan: 'CORE', schoolId: 'school-a', now })
+      .valid,
+    false
+  );
+  assert.equal(
+    validateCouponForSchool({ coupons, code: 'MAXEDOUT', plan: 'CORE', schoolId: 'school-a', now })
+      .valid,
+    false
+  );
+});
+
+test('PWA Setup & Top Header Install Button across Public, School, and Super Admin views', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+
+  const requiredAssets = [
+    'public/pwa-192x192.png',
+    'public/pwa-512x512.png',
+    'public/pwa-maskable-512x512.png',
+    'public/apple-touch-icon.png',
+    'public/icon.svg',
+  ];
+  for (const rel of requiredAssets) {
+    const full = path.resolve(process.cwd(), rel);
+    assert.equal(fs.existsSync(full), true, `Missing PWA asset: ${rel}`);
+    assert.ok(fs.statSync(full).size > 200, `PWA asset empty: ${rel}`);
+  }
+
+  const topLayouts = [
+    'src/components/PublicLayout.tsx',
+    'src/pages/SchoolWorkspace.tsx',
+    'src/pages/SuperAdminDashboard.tsx',
+  ];
+  for (const rel of topLayouts) {
+    const src = fs.readFileSync(path.resolve(process.cwd(), rel), 'utf8');
+    assert.match(src, /<PWAInstallButton\b/, `${rel} must mount PWAInstallButton in top header`);
+  }
+
+  const indexHtml = fs.readFileSync(path.resolve(process.cwd(), 'index.html'), 'utf8');
+  assert.match(indexHtml, /apple-touch-icon/);
+  assert.match(indexHtml, /viewport-fit=cover/);
+});
+
+

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Download, FileUp, Palette, Plus } from 'lucide-react';
+import { Download, FileUp, Palette, Plus, Ticket, X } from 'lucide-react';
 import { EmptyState, formatGhanaDate, formatGhs } from '../../components/BrandLogo';
 import { apiFetch, downloadProtectedFile } from '../../lib/api';
 import {
@@ -323,6 +323,26 @@ export function SettingsAndBillingPanel({
   );
   const [dashBusy, setDashBusy] = useState(false);
   const [subInfo, setSubInfo] = useState<any>(null);
+  const [couponInput, setCouponInput] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    description: string;
+    discountType: string;
+    discountPercent: number;
+    discountAmountGhs: number;
+    applicablePlan: string;
+  } | null>(null);
+  const [appliedQuote, setAppliedQuote] = useState<{
+    plan: 'CORE' | 'COMPLETE';
+    billingCycle: 'TERM' | 'THREE_TERMS';
+    grossAmountGhs: number | null;
+    threeTermDiscountGhs: number;
+    promoDiscountGhs: number;
+    netPayableGhs: number | null;
+  } | null>(null);
+  const [couponMsg, setCouponMsg] = useState('');
+  const [couponErr, setCouponErr] = useState('');
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
   const [msg, setMsg] = useState('');
   const [err, setErr] = useState('');
 
@@ -447,13 +467,65 @@ export function SettingsAndBillingPanel({
     }
   };
 
+  const validateCoupon = async (
+    codeOverride?: string,
+    targetPlan: 'CORE' | 'COMPLETE' = 'COMPLETE',
+    targetCycle: 'TERM' | 'THREE_TERMS' = 'TERM'
+  ) => {
+    const codeToTry = (codeOverride ?? couponInput).trim().toUpperCase();
+    setCouponErr('');
+    setCouponMsg('');
+    if (!codeToTry) {
+      setCouponErr('Enter a coupon code to apply.');
+      return;
+    }
+    setApplyingCoupon(true);
+    try {
+      const res = await apiFetch<{
+        valid: boolean;
+        coupon: NonNullable<typeof appliedCoupon>;
+        quote: NonNullable<typeof appliedQuote>;
+      }>('/api/school/subscription/validate-coupon', {
+        method: 'POST',
+        body: JSON.stringify({
+          promoCode: codeToTry,
+          plan: targetPlan,
+          billingCycle: targetCycle,
+        }),
+      });
+      setCouponInput(res.coupon.code);
+      setAppliedCoupon(res.coupon);
+      setAppliedQuote(res.quote);
+      const savedText = formatGhs(res.quote.promoDiscountGhs || 0);
+      setCouponMsg(
+        `Coupon ${res.coupon.code} applied — saves ${savedText} on NexaSua ${targetPlan}.`
+      );
+    } catch (e2) {
+      setAppliedCoupon(null);
+      setAppliedQuote(null);
+      setCouponErr(e2 instanceof Error ? e2.message : 'Unable to apply coupon.');
+    } finally {
+      setApplyingCoupon(false);
+    }
+  };
+
+  const clearCoupon = () => {
+    setCouponInput('');
+    setAppliedCoupon(null);
+    setAppliedQuote(null);
+    setCouponMsg('');
+    setCouponErr('');
+  };
+
   const startCheckout = async (plan: 'CORE' | 'COMPLETE', billingCycle: 'TERM' | 'THREE_TERMS') => {
     setErr('');
     setMsg('');
     const todayStr = new Date().toISOString().slice(0, 10);
+    const activePromoCode = (appliedCoupon?.code || couponInput).trim().toUpperCase();
     try {
       const res = await apiFetch<{
         paystackConfigured: boolean;
+        activatedFree?: boolean;
         authorizationUrl?: string;
         message?: string;
         invoice: { invoiceNumber: string; amountGhs: number };
@@ -462,6 +534,7 @@ export function SettingsAndBillingPanel({
         body: JSON.stringify({
           plan,
           billingCycle,
+          ...(activePromoCode ? { promoCode: activePromoCode } : {}),
           ...(vacationDateInput && vacationDateInput > todayStr
             ? { nextTermVacationDate: vacationDateInput }
             : {}),
@@ -471,10 +544,16 @@ export function SettingsAndBillingPanel({
         window.location.assign(res.authorizationUrl);
         return;
       }
-      setMsg(
-        `${res.message || 'Invoice created.'} (${res.invoice.invoiceNumber} · ${formatGhs(res.invoice.amountGhs)})`
-      );
-      apiFetch('/api/school/subscription').then(setSubInfo);
+      if (res.activatedFree) {
+        setMsg(res.message || 'Coupon applied and subscription activated immediately!');
+        clearCoupon();
+        onRefreshAuth();
+      } else {
+        setMsg(
+          `${res.message || 'Invoice created.'} (${res.invoice.invoiceNumber} · ${formatGhs(res.invoice.amountGhs)})`
+        );
+      }
+      apiFetch('/api/school/subscription').then(setSubInfo).catch(() => null);
     } catch (e2) {
       setErr(e2 instanceof Error ? e2.message : 'Checkout failed.');
     }
@@ -506,27 +585,116 @@ export function SettingsAndBillingPanel({
               <button
                 type="button"
                 onClick={() => void startCheckout('CORE', 'TERM')}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-[#102846]"
+                className="min-h-[40px] rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-[#102846] hover:bg-[#FBF8F1]"
               >
                 Renew Core (1 Term)
               </button>
               <button
                 type="button"
                 onClick={() => void startCheckout('COMPLETE', 'TERM')}
-                className="rounded-lg bg-[#148D82] px-3 py-1.5 text-xs font-semibold text-white"
+                className="min-h-[40px] rounded-lg bg-[#148D82] px-3 py-2 text-xs font-semibold text-white hover:bg-[#10766c]"
               >
                 Upgrade / Renew Complete (1 Term)
               </button>
               <button
                 type="button"
                 onClick={() => void startCheckout('COMPLETE', 'THREE_TERMS')}
-                className="rounded-lg bg-[#102846] px-3 py-1.5 text-xs font-semibold text-white"
+                className="min-h-[40px] rounded-lg bg-[#102846] px-3 py-2 text-xs font-semibold text-white hover:bg-[#193a63]"
               >
                 Complete 3 Terms (-10%)
               </button>
             </div>
           )}
         </div>
+
+        {(user.role === 'SCHOOL_ADMIN' ||
+          user.role === 'HEADTEACHER' ||
+          user.role === 'BURSAR' ||
+          user.role === 'SUPER_ADMIN') && (
+          <div className="pt-3 border-t border-slate-100 space-y-3">
+            {subInfo?.assignedCoupons?.length > 0 && (
+              <div className="rounded-lg border border-[#148D82]/30 bg-[#FBF8F1] p-3 space-y-2">
+                <div className="text-xs font-bold text-[#102846] inline-flex items-center gap-1.5">
+                  <Ticket className="w-3.5 h-3.5 text-[#148D82]" /> Coupons Gifted to Your School
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {subInfo.assignedCoupons.map((c: any) => {
+                    const label =
+                      c.discountType === 'FIXED_GHS'
+                        ? `${formatGhs(c.discountAmountGhs)} off`
+                        : `${c.discountPercent}% off`;
+                    const planForUse = c.applicablePlan === 'CORE' ? 'CORE' : 'COMPLETE';
+                    return (
+                      <div
+                        key={c.code}
+                        className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"
+                      >
+                        <span className="font-mono font-bold text-[#102846]">{c.code}</span>
+                        <span className="font-semibold text-[#148D82]">{label}</span>
+                        <span className="text-[#64748B]">({c.applicablePlan || 'ALL'})</span>
+                        <button
+                          type="button"
+                          onClick={() => void validateCoupon(c.code, planForUse, 'TERM')}
+                          className="rounded bg-[#148D82] px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-[#10766c]"
+                        >
+                          Use
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="text-xs text-[#64748B]">
+                Have a NexaSua subscription coupon? Apply it before clicking renew/upgrade.
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  value={couponInput}
+                  onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                  placeholder="Enter coupon code"
+                  className="w-40 sm:w-44 rounded-lg border border-slate-300 px-3 py-2 text-xs font-mono uppercase"
+                />
+                <button
+                  type="button"
+                  disabled={applyingCoupon}
+                  onClick={() => void validateCoupon()}
+                  className="min-h-[38px] rounded-lg border border-[#148D82] px-3.5 py-2 text-xs font-semibold text-[#148D82] hover:bg-[#148D82] hover:text-white disabled:opacity-60"
+                >
+                  {applyingCoupon ? 'Checking...' : 'Apply Coupon'}
+                </button>
+                {(appliedCoupon || couponInput) && (
+                  <button
+                    type="button"
+                    onClick={clearCoupon}
+                    aria-label="Clear coupon"
+                    className="min-h-[38px] rounded-lg border border-slate-200 px-2.5 py-2 text-xs text-[#64748B] hover:text-[#102846]"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {couponMsg && appliedQuote && (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 flex flex-wrap items-center justify-between gap-2">
+                <span>{couponMsg}</span>
+                {appliedQuote.netPayableGhs !== null && (
+                  <span className="font-mono font-bold">
+                    Estimated Total: {formatGhs(appliedQuote.netPayableGhs)}
+                  </span>
+                )}
+              </div>
+            )}
+            {couponErr && (
+              <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900">
+                {couponErr}
+              </div>
+            )}
+          </div>
+        )}
 
         {(user.role === 'SCHOOL_ADMIN' ||
           user.role === 'HEADTEACHER' ||

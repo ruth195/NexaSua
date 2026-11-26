@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { OfflineIndicator } from './components/PWAInstallButton';
 import { PublicLayout } from './components/PublicLayout';
 import { apiFetch, setActiveAdminSchoolId, setMemoryAuthToken } from './lib/api';
 import { PublicPageRouter } from './pages/PublicPages';
@@ -56,12 +57,17 @@ export default function App() {
 
   const toggleCandlelight = () => setCandlelight((prev) => !prev);
 
-  const candlelightOverlay = candlelight ? (
-    <div
-      aria-hidden="true"
-      className="pointer-events-none fixed inset-0 z-[60] bg-amber-500/[0.12] mix-blend-multiply transition-opacity duration-200"
-    />
-  ) : null;
+  const candlelightOverlay = (
+    <>
+      {candlelight && (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none fixed inset-0 z-[60] bg-amber-500/[0.12] mix-blend-multiply transition-opacity duration-200"
+        />
+      )}
+      <OfflineIndicator />
+    </>
+  );
 
   const navigate = (nextPath: string) => {
     if (nextPath !== window.location.pathname) {

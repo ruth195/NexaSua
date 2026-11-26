@@ -151,6 +151,7 @@ export function calculateSubscriptionPrice(params: {
   bands?: PricingBand[];
   threeTermDiscountPercent?: number;
   promoDiscountPercent?: number;
+  promoFixedDiscountGhs?: number;
 }): PriceQuoteResult {
   const count = Math.max(1, Math.floor(params.studentCount));
   const bands = params.bands?.length ? params.bands : DEFAULT_PRICING_BANDS;
@@ -165,6 +166,7 @@ export function calculateSubscriptionPrice(params: {
       ? Math.max(0, Math.min(50, params.threeTermDiscountPercent ?? 10))
       : 0;
   const promoDiscountPercent = Math.max(0, Math.min(100, params.promoDiscountPercent ?? 0));
+  const promoFixedDiscountGhs = Math.max(0, params.promoFixedDiscountGhs ?? 0);
 
   if (band.isCustomQuote) {
     return {
@@ -189,7 +191,10 @@ export function calculateSubscriptionPrice(params: {
   const grossAmountGhs = roundCurrency(unitTermPriceGhs * termsCount);
   const threeTermDiscountGhs = roundCurrency(grossAmountGhs * (threeTermDiscountPercent / 100));
   const afterThreeTerm = roundCurrency(grossAmountGhs - threeTermDiscountGhs);
-  const promoDiscountGhs = roundCurrency(afterThreeTerm * (promoDiscountPercent / 100));
+  const percentOff = roundCurrency(afterThreeTerm * (promoDiscountPercent / 100));
+  const promoDiscountGhs = roundCurrency(
+    Math.min(afterThreeTerm, percentOff + promoFixedDiscountGhs)
+  );
   const netPayableGhs = roundCurrency(Math.max(0, afterThreeTerm - promoDiscountGhs));
 
   return {
@@ -206,6 +211,82 @@ export function calculateSubscriptionPrice(params: {
     promoDiscountPercent,
     promoDiscountGhs,
     netPayableGhs,
+  };
+}
+
+export interface CouponCandidate {
+  code: string;
+  description?: string;
+  discountType?: 'PERCENT' | 'FIXED_GHS' | string;
+  discountPercent?: number;
+  discountAmountGhs?: number;
+  applicablePlan?: 'ALL' | 'CORE' | 'COMPLETE' | string;
+  assignedSchoolId?: unknown;
+  maxUses?: number | null;
+  usedCount?: number;
+  active?: boolean;
+  expiresAt?: Date | string | null;
+}
+
+export function validateCouponForSchool(params: {
+  coupons: CouponCandidate[];
+  code: string;
+  plan: SubscriptionPlan;
+  schoolId: string;
+  now?: Date;
+}):
+  | {
+      valid: true;
+      coupon: CouponCandidate;
+      promoDiscountPercent: number;
+      promoFixedDiscountGhs: number;
+    }
+  | { valid: false; error: string } {
+  const normalized = params.code.trim().toUpperCase();
+  if (!normalized) {
+    return { valid: false, error: 'Please enter a coupon code.' };
+  }
+  const coupon = params.coupons.find((c) => c.code.toUpperCase() === normalized);
+  if (!coupon) {
+    return { valid: false, error: 'Coupon code not found.' };
+  }
+  if (!coupon.active) {
+    return { valid: false, error: 'This coupon is currently paused or inactive.' };
+  }
+  const now = params.now ?? new Date();
+  if (coupon.expiresAt && new Date(coupon.expiresAt).getTime() < now.getTime()) {
+    return { valid: false, error: 'This coupon has expired.' };
+  }
+  if (
+    typeof coupon.maxUses === 'number' &&
+    coupon.maxUses > 0 &&
+    (coupon.usedCount ?? 0) >= coupon.maxUses
+  ) {
+    return { valid: false, error: 'This coupon has reached its maximum redemption limit.' };
+  }
+  if (
+    coupon.assignedSchoolId &&
+    String(coupon.assignedSchoolId) !== String(params.schoolId)
+  ) {
+    return { valid: false, error: 'This coupon is assigned to another school.' };
+  }
+  if (
+    coupon.applicablePlan &&
+    coupon.applicablePlan !== 'ALL' &&
+    coupon.applicablePlan !== params.plan
+  ) {
+    return {
+      valid: false,
+      error: `This coupon only applies to the NexaSua ${coupon.applicablePlan} plan.`,
+    };
+  }
+
+  const isFixed = coupon.discountType === 'FIXED_GHS';
+  return {
+    valid: true,
+    coupon,
+    promoDiscountPercent: isFixed ? 0 : Number(coupon.discountPercent || 0),
+    promoFixedDiscountGhs: isFixed ? Number(coupon.discountAmountGhs || 0) : 0,
   };
 }
 

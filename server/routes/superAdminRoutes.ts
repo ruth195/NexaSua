@@ -700,10 +700,18 @@ router.put('/plans', async (req: AuthenticatedRequest, res) => {
 });
 
 const promoSchema = z.object({
-  code: z.string().min(3).max(30),
+  code: z
+    .string()
+    .min(3)
+    .max(30)
+    .regex(/^[A-Za-z0-9_-]+$/, 'Coupon code can only use letters, numbers, hyphens, or underscores.'),
   description: z.string().min(3).max(200),
-  discountPercent: z.number().min(1).max(100),
-  applicablePlan: z.enum(['ALL', 'CORE', 'COMPLETE']),
+  discountType: z.enum(['PERCENT', 'FIXED_GHS']).default('PERCENT'),
+  discountPercent: z.number().min(0).max(100).default(0),
+  discountAmountGhs: z.number().min(0).max(100000).default(0),
+  applicablePlan: z.enum(['ALL', 'CORE', 'COMPLETE']).default('ALL'),
+  assignedSchoolId: z.string().nullable().optional(),
+  maxUses: z.number().int().min(1).max(100000).nullable().optional(),
   expiresAt: z.string().nullable().optional(),
 });
 
@@ -711,18 +719,151 @@ router.post('/promotions', async (req: AuthenticatedRequest, res) => {
   const body = parseBody(promoSchema, req, res);
   if (!body) return;
 
+  if (body.discountType === 'PERCENT' && body.discountPercent < 1) {
+    res.status(400).json({ error: 'Percentage discount must be between 1% and 100%.' });
+    return;
+  }
+  if (body.discountType === 'FIXED_GHS' && body.discountAmountGhs <= 0) {
+    res.status(400).json({ error: 'Fixed GH₵ coupon discount must be greater than 0.' });
+    return;
+  }
+
+  const normalizedCode = body.code.toUpperCase().trim();
   const cfg = await ensureSystemConfig();
+  if (cfg.promotionalOffers.some((o: { code: string }) => o.code.toUpperCase() === normalizedCode)) {
+    res.status(409).json({ error: `Coupon code "${normalizedCode}" already exists.` });
+    return;
+  }
+
+  let assignedSchoolId: string | null = null;
+  let assignedSchoolName = '';
+  if (body.assignedSchoolId) {
+    const validId = validObjectId(body.assignedSchoolId);
+    if (!validId) {
+      res.status(400).json({ error: 'Invalid assigned school ID.' });
+      return;
+    }
+    const targetSchool = await SchoolModel.findById(validId).select('name').lean();
+    if (!targetSchool) {
+      res.status(404).json({ error: 'Selected school not found.' });
+      return;
+    }
+    assignedSchoolId = validId;
+    assignedSchoolName = targetSchool.name;
+  }
+
   cfg.promotionalOffers.push({
-    code: body.code.toUpperCase().trim(),
+    code: normalizedCode,
     description: body.description.trim(),
-    discountPercent: body.discountPercent,
+    discountType: body.discountType,
+    discountPercent: body.discountType === 'PERCENT' ? body.discountPercent : 0,
+    discountAmountGhs: body.discountType === 'FIXED_GHS' ? body.discountAmountGhs : 0,
     applicablePlan: body.applicablePlan,
+    assignedSchoolId,
+    assignedSchoolName,
+    maxUses: body.maxUses ?? null,
+    usedCount: 0,
     active: true,
     expiresAt: body.expiresAt ? new Date(body.expiresAt) : null,
   });
   await cfg.save();
 
+  if (assignedSchoolId) {
+    const schoolAdmins = await UserModel.find({
+      schoolId: assignedSchoolId,
+      role: 'SCHOOL_ADMIN',
+      status: 'ACTIVE',
+    })
+      .select('_id')
+      .lean();
+    const rewardLabel =
+      body.discountType === 'FIXED_GHS'
+        ? `GH₵${body.discountAmountGhs} off`
+        : `${body.discountPercent}% off`;
+    if (schoolAdmins.length > 0) {
+      await NotificationModel.insertMany(
+        schoolAdmins.map((admin) => ({
+          schoolId: assignedSchoolId,
+          userId: admin._id,
+          title: `Coupon Received: ${normalizedCode} (${rewardLabel})`,
+          message: `${body.description.trim()} — Apply code ${normalizedCode} under Settings & Subscription checkout.`,
+          type: 'COUPON_GRANT',
+        }))
+      );
+    }
+  }
+
+  await writeAuditLog({
+    schoolId: assignedSchoolId,
+    userId: req.authUser!._id,
+    userEmail: req.authUser!.email,
+    userRole: 'SUPER_ADMIN',
+    action: 'COUPON_CREATED',
+    resourceType: 'SystemConfig',
+    resourceId: normalizedCode,
+    details: {
+      discountType: body.discountType,
+      discountPercent: body.discountPercent,
+      discountAmountGhs: body.discountAmountGhs,
+      applicablePlan: body.applicablePlan,
+      assignedSchoolName,
+    },
+    ipAddress: req.ip,
+  });
+
   res.status(201).json({ promotions: cfg.promotionalOffers });
+});
+
+router.patch('/promotions/:code/toggle', async (req: AuthenticatedRequest, res) => {
+  const code = String(req.params.code || '').trim().toUpperCase();
+  const cfg = await ensureSystemConfig();
+  const offer = cfg.promotionalOffers.find((o: { code: string }) => o.code.toUpperCase() === code);
+  if (!offer) {
+    res.status(404).json({ error: 'Coupon not found.' });
+    return;
+  }
+  offer.active = !offer.active;
+  await cfg.save();
+
+  await writeAuditLog({
+    userId: req.authUser!._id,
+    userEmail: req.authUser!.email,
+    userRole: 'SUPER_ADMIN',
+    action: 'COUPON_TOGGLED',
+    resourceType: 'SystemConfig',
+    resourceId: code,
+    details: { active: offer.active },
+    ipAddress: req.ip,
+  });
+
+  res.json({ promotions: cfg.promotionalOffers });
+});
+
+router.delete('/promotions/:code', async (req: AuthenticatedRequest, res) => {
+  const code = String(req.params.code || '').trim().toUpperCase();
+  const cfg = await ensureSystemConfig();
+  const before = cfg.promotionalOffers.length;
+  cfg.promotionalOffers = cfg.promotionalOffers.filter(
+    (o: { code: string }) => o.code.toUpperCase() !== code
+  ) as unknown as typeof cfg.promotionalOffers;
+
+  if (cfg.promotionalOffers.length === before) {
+    res.status(404).json({ error: 'Coupon not found.' });
+    return;
+  }
+  await cfg.save();
+
+  await writeAuditLog({
+    userId: req.authUser!._id,
+    userEmail: req.authUser!.email,
+    userRole: 'SUPER_ADMIN',
+    action: 'COUPON_DELETED',
+    resourceType: 'SystemConfig',
+    resourceId: code,
+    ipAddress: req.ip,
+  });
+
+  res.json({ promotions: cfg.promotionalOffers });
 });
 
 router.get('/custom-projects', async (_req, res) => {

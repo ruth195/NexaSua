@@ -2,21 +2,28 @@ import React, { useEffect, useState } from 'react';
 import {
   Building2,
   ClipboardList,
+  Copy,
   CreditCard,
+  Gift,
   LayoutDashboard,
   LifeBuoy,
   LogOut,
   Menu,
   Package,
-  Settings,
+  Pause,
+  Play,
   ShieldAlert,
+  Ticket,
+  Trash2,
   X,
 } from 'lucide-react';
 import { BrandLogo, EmptyState, formatGhanaDate, formatGhs } from '../components/BrandLogo';
 import { CandlelightToggle } from '../components/CandlelightToggle';
+import { PWAInstallButton } from '../components/PWAInstallButton';
 import { apiFetch } from '../lib/api';
 import type {
   AuthUser,
+  CouponOffer,
   IntegrationItem,
   PlanCatalogItem,
   PricingBand,
@@ -28,6 +35,7 @@ type SuperTab =
   | 'overview'
   | 'schools'
   | 'plans'
+  | 'coupons'
   | 'pricing'
   | 'custom'
   | 'tickets'
@@ -102,13 +110,19 @@ export function SuperAdminDashboard({
     termVacationDate: '',
   });
 
-  // Promo form
+  // Coupon / Promo form
   const [promo, setPromo] = useState({
     code: '',
     description: '',
-    discountPercent: 15,
-    applicablePlan: 'ALL',
+    discountType: 'PERCENT' as 'PERCENT' | 'FIXED_GHS',
+    discountPercent: 20,
+    discountAmountGhs: 150,
+    applicablePlan: 'ALL' as 'ALL' | 'CORE' | 'COMPLETE',
+    assignedSchoolId: '',
+    maxUses: '',
+    expiresAt: '',
   });
+  const [copiedCode, setCopiedCode] = useState('');
 
   // Ticket reply
   const [replyMap, setReplyMap] = useState<Record<string, string>>({});
@@ -281,19 +295,89 @@ export function SuperAdminDashboard({
     }
   };
 
+  const generateCouponCode = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let suffix = '';
+    for (let i = 0; i < 4; i++) {
+      suffix += chars[Math.floor(Math.random() * chars.length)];
+    }
+    setPromo((prev) => ({ ...prev, code: `NXS-GIFT-${suffix}` }));
+  };
+
   const createPromo = async (e: React.FormEvent) => {
     e.preventDefault();
+    setBanner('');
+    setError('');
     try {
-      await apiFetch('/api/super-admin/promotions', {
+      const res = await apiFetch<{ promotions: CouponOffer[] }>('/api/super-admin/promotions', {
         method: 'POST',
-        body: JSON.stringify(promo),
+        body: JSON.stringify({
+          code: promo.code.trim().toUpperCase(),
+          description: promo.description.trim(),
+          discountType: promo.discountType,
+          discountPercent: promo.discountType === 'PERCENT' ? Number(promo.discountPercent) : 0,
+          discountAmountGhs:
+            promo.discountType === 'FIXED_GHS' ? Number(promo.discountAmountGhs) : 0,
+          applicablePlan: promo.applicablePlan,
+          assignedSchoolId: promo.assignedSchoolId || null,
+          maxUses: promo.maxUses ? Number(promo.maxUses) : null,
+          expiresAt: promo.expiresAt || null,
+        }),
       });
-      setPromo({ code: '', description: '', discountPercent: 15, applicablePlan: 'ALL' });
-      setBanner('Promotional offer added.');
-      await loadAll();
+      setConfig((prev) => (prev ? { ...prev, promotionalOffers: res.promotions } : prev));
+      setPromo({
+        code: '',
+        description: '',
+        discountType: 'PERCENT',
+        discountPercent: 20,
+        discountAmountGhs: 150,
+        applicablePlan: 'ALL',
+        assignedSchoolId: '',
+        maxUses: '',
+        expiresAt: '',
+      });
+      setBanner('Coupon created and made active immediately.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Promo creation failed.');
+      setError(err instanceof Error ? err.message : 'Coupon creation failed.');
     }
+  };
+
+  const togglePromo = async (code: string) => {
+    setBanner('');
+    setError('');
+    try {
+      const res = await apiFetch<{ promotions: CouponOffer[] }>(
+        `/api/super-admin/promotions/${encodeURIComponent(code)}/toggle`,
+        { method: 'PATCH', body: JSON.stringify({}) }
+      );
+      setConfig((prev) => (prev ? { ...prev, promotionalOffers: res.promotions } : prev));
+      setBanner(`Updated status for coupon ${code}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update coupon.');
+    }
+  };
+
+  const deletePromo = async (code: string) => {
+    setBanner('');
+    setError('');
+    try {
+      const res = await apiFetch<{ promotions: CouponOffer[] }>(
+        `/api/super-admin/promotions/${encodeURIComponent(code)}`,
+        { method: 'DELETE' }
+      );
+      setConfig((prev) => (prev ? { ...prev, promotionalOffers: res.promotions } : prev));
+      setBanner(`Deleted coupon ${code}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete coupon.');
+    }
+  };
+
+  const copyPromoCode = (code: string) => {
+    if (navigator.clipboard?.writeText) {
+      void navigator.clipboard.writeText(code);
+    }
+    setCopiedCode(code);
+    window.setTimeout(() => setCopiedCode((curr) => (curr === code ? '' : curr)), 2000);
   };
 
   const updateProject = async (id: string, status: string, quotationAmountGhs?: number | null) => {
@@ -371,14 +455,15 @@ export function SuperAdminDashboard({
     }
   };
 
-  const navItems: Array<{ id: SuperTab; label: string; icon: React.ReactNode }> = [
-    { id: 'overview', label: 'Platform Overview', icon: <LayoutDashboard className="w-4 h-4" /> },
-    { id: 'schools', label: 'Schools & Trials', icon: <Building2 className="w-4 h-4" /> },
-    { id: 'plans', label: 'Subscription Plans', icon: <Package className="w-4 h-4" /> },
-    { id: 'pricing', label: 'Pricing & Offers', icon: <CreditCard className="w-4 h-4" /> },
-    { id: 'custom', label: 'Custom Projects', icon: <ClipboardList className="w-4 h-4" /> },
-    { id: 'tickets', label: 'Support Tickets', icon: <LifeBuoy className="w-4 h-4" /> },
-    { id: 'audit', label: 'Security & Audit', icon: <ShieldAlert className="w-4 h-4" /> },
+  const navItems: Array<{ id: SuperTab; label: string; shortLabel: string; icon: React.ReactNode }> = [
+    { id: 'overview', label: 'Platform Overview', shortLabel: 'Overview', icon: <LayoutDashboard className="w-4 h-4" /> },
+    { id: 'schools', label: 'Schools & Trials', shortLabel: 'Schools', icon: <Building2 className="w-4 h-4" /> },
+    { id: 'plans', label: 'Subscription Plans', shortLabel: 'Plans', icon: <Package className="w-4 h-4" /> },
+    { id: 'coupons', label: 'Coupons & Grants', shortLabel: 'Coupons', icon: <Ticket className="w-4 h-4" /> },
+    { id: 'pricing', label: 'Pricing & Offers', shortLabel: 'Pricing', icon: <CreditCard className="w-4 h-4" /> },
+    { id: 'custom', label: 'Custom Projects', shortLabel: 'Custom', icon: <ClipboardList className="w-4 h-4" /> },
+    { id: 'tickets', label: 'Support Tickets', shortLabel: 'Tickets', icon: <LifeBuoy className="w-4 h-4" /> },
+    { id: 'audit', label: 'Security & Audit', shortLabel: 'Audit', icon: <ShieldAlert className="w-4 h-4" /> },
   ];
 
   return (
@@ -422,27 +507,30 @@ export function SuperAdminDashboard({
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-30 h-14 sm:h-16 bg-white/95 backdrop-blur border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               type="button"
               onClick={() => setMobileNav((p) => !p)}
-              className="lg:hidden p-2 rounded-lg border border-slate-200"
+              aria-label="Toggle admin menu"
+              className="lg:hidden min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg border border-slate-200 text-[#102846] shrink-0"
             >
               {mobileNav ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
-            <div className="text-sm font-semibold text-[#102846]">
-              NexaFlow Technologies / {navItems.find((n) => n.id === tab)?.label}
+            <div className="text-xs sm:text-sm font-semibold text-[#102846] truncate">
+              <span className="hidden sm:inline">NexaFlow Technologies / </span>
+              {navItems.find((n) => n.id === tab)?.label}
             </div>
           </div>
-          <div className="flex items-center gap-2.5 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            <PWAInstallButton compact />
             {onToggleCandlelight && (
               <CandlelightToggle enabled={candlelight} onToggle={onToggleCandlelight} />
             )}
             <button
               type="button"
               onClick={() => void loadAll()}
-              className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-[#102846] hover:bg-[#FBF8F1]"
+              className="min-h-[38px] rounded-lg border border-slate-200 px-2.5 sm:px-3 py-1.5 text-xs font-semibold text-[#102846] hover:bg-[#FBF8F1]"
             >
               Refresh
             </button>
@@ -450,7 +538,7 @@ export function SuperAdminDashboard({
         </header>
 
         {mobileNav && (
-          <div className="lg:hidden bg-[#102846] text-white p-3 space-y-1">
+          <div className="lg:hidden bg-[#102846] text-white p-3 space-y-1 max-h-[75vh] overflow-y-auto">
             {navItems.map((item) => (
               <button
                 key={item.id}
@@ -459,7 +547,9 @@ export function SuperAdminDashboard({
                   setTab(item.id);
                   setMobileNav(false);
                 }}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm"
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium ${
+                  tab === item.id ? 'bg-[#148D82] text-white' : 'text-slate-100 hover:bg-white/10'
+                }`}
               >
                 {item.icon}
                 <span>{item.label}</span>
@@ -468,14 +558,14 @@ export function SuperAdminDashboard({
             <button
               type="button"
               onClick={onLogout}
-              className="w-full text-left px-3 py-2 text-sm text-amber-300"
+              className="w-full text-left px-3 py-2.5 text-sm font-medium text-amber-300"
             >
               Sign Out
             </button>
           </div>
         )}
 
-        <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto space-y-6">
+        <main className="flex-1 p-4 sm:p-8 pb-24 lg:pb-8 max-w-7xl w-full mx-auto space-y-6">
           {banner && (
             <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
               {banner}
@@ -520,6 +610,14 @@ export function SuperAdminDashboard({
                     className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-[#102846] hover:bg-[#FBF8F1]"
                   >
                     Manage Subscription Plans
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTab('coupons')}
+                    className="rounded-lg border border-[#148D82]/40 bg-[#148D82]/5 px-3 py-2 text-xs font-semibold text-[#102846] hover:bg-[#148D82]/10 inline-flex items-center gap-1.5"
+                  >
+                    <Ticket className="w-3.5 h-3.5 text-[#148D82]" />
+                    Coupons &amp; Grants
                   </button>
                   <button
                     type="button"
@@ -837,68 +935,84 @@ export function SuperAdminDashboard({
                             <td className="py-3 px-4 text-right font-mono tabular-nums">
                               {s.actualStudentCount} / {s.studentPopulationEstimate}
                             </td>
-                            <td className="py-3 px-4 text-right space-x-2 whitespace-nowrap">
-                              <button
-                                type="button"
-                                onClick={() => void enterSchoolWorkspace(s._id)}
-                                className="text-xs font-semibold text-[#148D82] hover:underline"
-                              >
-                                Open Workspace
-                              </button>
-                              {s.status === 'PENDING' && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => void schoolAction(s._id, 'approve')}
-                                    className="text-xs font-semibold text-[#148D82] hover:underline"
-                                  >
-                                    Approve
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => void schoolAction(s._id, 'reject')}
-                                    className="text-xs font-semibold text-red-600 hover:underline"
-                                  >
-                                    Reject
-                                  </button>
-                                </>
-                              )}
-                              {s.status === 'APPROVED' && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => void overrideSubscription(s._id, 'CORE', 'ACTIVE')}
-                                    className="text-xs font-semibold text-[#102846] hover:underline"
-                                  >
-                                    Set Core
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      void overrideSubscription(s._id, 'COMPLETE', 'ACTIVE')
-                                    }
-                                    className="text-xs font-semibold text-[#102846] hover:underline"
-                                  >
-                                    Set Complete
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => void schoolAction(s._id, 'suspend')}
-                                    className="text-xs font-semibold text-red-600 hover:underline"
-                                  >
-                                    Suspend
-                                  </button>
-                                </>
-                              )}
-                              {s.status === 'SUSPENDED' && (
+                            <td className="py-3 px-4 text-right">
+                              <div className="inline-flex flex-wrap items-center justify-end gap-x-2.5 gap-y-1">
                                 <button
                                   type="button"
-                                  onClick={() => void schoolAction(s._id, 'reactivate')}
+                                  onClick={() => void enterSchoolWorkspace(s._id)}
                                   className="text-xs font-semibold text-[#148D82] hover:underline"
                                 >
-                                  Reactivate
+                                  Open Workspace
                                 </button>
-                              )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setPromo((p) => ({
+                                      ...p,
+                                      assignedSchoolId: s._id,
+                                      description: p.description || `Partner discount for ${s.name}`,
+                                    }));
+                                    setTab('coupons');
+                                  }}
+                                  className="inline-flex items-center gap-1 text-xs font-semibold text-[#102846] hover:text-[#148D82] hover:underline"
+                                >
+                                  <Gift className="w-3.5 h-3.5" /> Give Coupon
+                                </button>
+                                {s.status === 'PENDING' && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => void schoolAction(s._id, 'approve')}
+                                      className="text-xs font-semibold text-[#148D82] hover:underline"
+                                    >
+                                      Approve
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void schoolAction(s._id, 'reject')}
+                                      className="text-xs font-semibold text-red-600 hover:underline"
+                                    >
+                                      Reject
+                                    </button>
+                                  </>
+                                )}
+                                {s.status === 'APPROVED' && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => void overrideSubscription(s._id, 'CORE', 'ACTIVE')}
+                                      className="text-xs font-semibold text-[#102846] hover:underline"
+                                    >
+                                      Set Core
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void overrideSubscription(s._id, 'COMPLETE', 'ACTIVE')
+                                      }
+                                      className="text-xs font-semibold text-[#102846] hover:underline"
+                                    >
+                                      Set Complete
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void schoolAction(s._id, 'suspend')}
+                                      className="text-xs font-semibold text-red-600 hover:underline"
+                                    >
+                                      Suspend
+                                    </button>
+                                  </>
+                                )}
+                                {s.status === 'SUSPENDED' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void schoolAction(s._id, 'reactivate')}
+                                    className="text-xs font-semibold text-[#148D82] hover:underline"
+                                  >
+                                    Reactivate
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         );
@@ -1120,6 +1234,341 @@ export function SuperAdminDashboard({
             </form>
           )}
 
+          {tab === 'coupons' && config && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-xl font-bold text-[#102846]">
+                  Subscription Coupons &amp; School Grants
+                </h2>
+                <p className="text-xs text-[#64748B] mt-1">
+                  Create promo codes for all schools or gift targeted coupons directly to a specific
+                  school (schools receive an in-app notification and 1-click redeem inside Settings).
+                </p>
+              </div>
+
+              <form
+                onSubmit={createPromo}
+                className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 space-y-4"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-base font-bold text-[#102846] inline-flex items-center gap-2">
+                    <Gift className="w-4 h-4 text-[#148D82]" /> Give / Create Coupon
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPromo((p) => ({
+                          ...p,
+                          discountType: 'PERCENT',
+                          discountPercent: 100,
+                          description: p.description || '100% Free Term Grant',
+                        }))
+                      }
+                      className="rounded-lg border border-slate-200 bg-[#FBF8F1] px-2.5 py-1 text-[11px] font-semibold text-[#102846] hover:border-[#148D82]"
+                    >
+                      100% Free Term
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPromo((p) => ({
+                          ...p,
+                          discountType: 'PERCENT',
+                          discountPercent: 50,
+                          description: p.description || '50% Partner Term Discount',
+                        }))
+                      }
+                      className="rounded-lg border border-slate-200 bg-[#FBF8F1] px-2.5 py-1 text-[11px] font-semibold text-[#102846] hover:border-[#148D82]"
+                    >
+                      50% Off
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setPromo((p) => ({
+                          ...p,
+                          discountType: 'FIXED_GHS',
+                          discountAmountGhs: 200,
+                          description: p.description || 'GH₵ 200 Institutional Grant',
+                        }))
+                      }
+                      className="rounded-lg border border-slate-200 bg-[#FBF8F1] px-2.5 py-1 text-[11px] font-semibold text-[#102846] hover:border-[#148D82]"
+                    >
+                      GH₵ 200 Off
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-[#102846] mb-1">
+                      Coupon Code *
+                    </label>
+                    <div className="flex gap-1.5">
+                      <input
+                        required
+                        placeholder="NXS-GIFT-2026"
+                        value={promo.code}
+                        onChange={(e) =>
+                          setPromo({
+                            ...promo,
+                            code: e.target.value.toUpperCase().replace(/[^A-Z0-9_-]/g, ''),
+                          })
+                        }
+                        className="flex-1 min-w-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono uppercase"
+                      />
+                      <button
+                        type="button"
+                        onClick={generateCouponCode}
+                        className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-[#102846] hover:bg-[#FBF8F1] shrink-0"
+                      >
+                        Generate
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[#102846] mb-1">
+                      Discount Type *
+                    </label>
+                    <select
+                      value={promo.discountType}
+                      onChange={(e) =>
+                        setPromo({
+                          ...promo,
+                          discountType: e.target.value as 'PERCENT' | 'FIXED_GHS',
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+                    >
+                      <option value="PERCENT">Percentage (% off)</option>
+                      <option value="FIXED_GHS">Fixed Amount (GH₵ off)</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[#102846] mb-1">
+                      {promo.discountType === 'PERCENT'
+                        ? 'Discount (%) *'
+                        : 'Discount Amount (GH₵) *'}
+                    </label>
+                    {promo.discountType === 'PERCENT' ? (
+                      <input
+                        required
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={promo.discountPercent}
+                        onChange={(e) =>
+                          setPromo({ ...promo, discountPercent: Number(e.target.value) })
+                        }
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono"
+                      />
+                    ) : (
+                      <input
+                        required
+                        type="number"
+                        min={1}
+                        step="0.01"
+                        value={promo.discountAmountGhs}
+                        onChange={(e) =>
+                          setPromo({ ...promo, discountAmountGhs: Number(e.target.value) })
+                        }
+                        className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono"
+                      />
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[#102846] mb-1">
+                      Eligible Plan
+                    </label>
+                    <select
+                      value={promo.applicablePlan}
+                      onChange={(e) =>
+                        setPromo({
+                          ...promo,
+                          applicablePlan: e.target.value as 'ALL' | 'CORE' | 'COMPLETE',
+                        })
+                      }
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+                    >
+                      <option value="ALL">All Plans (Core &amp; Complete)</option>
+                      <option value="CORE">NexaSua Core Only</option>
+                      <option value="COMPLETE">NexaSua Complete Only</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-[#102846] mb-1">
+                      Give to School (optional)
+                    </label>
+                    <select
+                      value={promo.assignedSchoolId}
+                      onChange={(e) => setPromo({ ...promo, assignedSchoolId: e.target.value })}
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+                    >
+                      <option value="">All Eligible Schools (Public Code)</option>
+                      {schools.map((sc) => (
+                        <option key={sc._id} value={sc._id}>
+                          {sc.name} ({sc.schoolCode})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-[#102846] mb-1">
+                        Max Uses
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        placeholder="Unlimited"
+                        value={promo.maxUses}
+                        onChange={(e) => setPromo({ ...promo, maxUses: e.target.value })}
+                        className="w-full rounded-lg border border-slate-300 px-2.5 py-2 text-sm font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-[#102846] mb-1">
+                        Expiry Date
+                      </label>
+                      <input
+                        type="date"
+                        value={promo.expiresAt}
+                        onChange={(e) => setPromo({ ...promo, expiresAt: e.target.value })}
+                        className="w-full rounded-lg border border-slate-300 px-2.5 py-2 text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="sm:col-span-2 lg:col-span-3 flex flex-col sm:flex-row gap-3">
+                    <input
+                      required
+                      placeholder="Description / Reason (e.g. Early Term Onboarding Grant for St. Mary's)"
+                      value={promo.description}
+                      onChange={(e) => setPromo({ ...promo, description: e.target.value })}
+                      className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    />
+                    <button
+                      type="submit"
+                      className="rounded-lg bg-[#148D82] hover:bg-[#10766c] px-5 py-2.5 text-sm font-semibold text-white shrink-0"
+                    >
+                      {promo.assignedSchoolId ? 'Issue & Notify School' : 'Create Coupon'}
+                    </button>
+                  </div>
+                </div>
+              </form>
+
+              {config.promotionalOffers.length === 0 ? (
+                <EmptyState
+                  title="No coupons issued yet"
+                  description="Create your first coupon above or click Give Coupon next to any school."
+                />
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {config.promotionalOffers.map((o: CouponOffer) => {
+                      const rewardText =
+                        o.discountType === 'FIXED_GHS'
+                          ? `${formatGhs(o.discountAmountGhs || 0)} off`
+                          : `${o.discountPercent}% off`;
+                      const isExpired =
+                        Boolean(o.expiresAt) && new Date(o.expiresAt!).getTime() < Date.now();
+                      return (
+                        <div
+                          key={o.code}
+                          className="bg-white border border-slate-200 rounded-xl p-4 sm:p-5 flex flex-col justify-between gap-3"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-mono text-sm font-bold text-[#102846] bg-[#FBF8F1] border border-slate-200 rounded px-2 py-0.5">
+                                  {o.code}
+                                </span>
+                                <span className="text-xs font-bold text-[#148D82]">
+                                  {rewardText}
+                                </span>
+                                <span
+                                  className={`text-[11px] font-semibold px-2 py-0.5 rounded ${
+                                    !o.active || isExpired
+                                      ? 'bg-slate-100 text-slate-600'
+                                      : 'bg-emerald-50 text-emerald-700'
+                                  }`}
+                                >
+                                  {isExpired ? 'Expired' : o.active ? 'Active' : 'Paused'}
+                                </span>
+                              </div>
+                              <p className="text-xs text-[#64748B] mt-2">{o.description}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-[11px] text-[#64748B]">
+                            <div className="flex flex-wrap gap-x-3 gap-y-1">
+                              <span>
+                                Plan: <strong className="text-[#102846]">{o.applicablePlan || 'ALL'}</strong>
+                              </span>
+                              <span>
+                                School:{' '}
+                                <strong className="text-[#102846]">
+                                  {o.assignedSchoolName || 'All Schools'}
+                                </strong>
+                              </span>
+                              <span className="font-mono">
+                                Used: {o.usedCount ?? 0}
+                                {o.maxUses ? `/${o.maxUses}` : ' (∞)'}
+                              </span>
+                              {o.expiresAt && (
+                                <span>Exp: {formatGhanaDate(o.expiresAt)}</span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => copyPromoCode(o.code)}
+                                className="inline-flex items-center gap-1 rounded border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-[#102846] hover:bg-[#FBF8F1]"
+                              >
+                                <Copy className="w-3.5 h-3.5" />
+                                {copiedCode === o.code ? 'Copied' : 'Copy'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void togglePromo(o.code)}
+                                className="inline-flex items-center gap-1 rounded border border-slate-200 px-2.5 py-1.5 text-xs font-semibold text-[#102846] hover:bg-[#FBF8F1]"
+                              >
+                                {o.active ? (
+                                  <>
+                                    <Pause className="w-3.5 h-3.5" /> Pause
+                                  </>
+                                ) : (
+                                  <>
+                                    <Play className="w-3.5 h-3.5" /> Activate
+                                  </>
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void deletePromo(o.code)}
+                                aria-label={`Delete coupon ${o.code}`}
+                                className="inline-flex items-center gap-1 rounded border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" /> Delete
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {tab === 'pricing' && config && (
             <div className="space-y-6">
               <form onSubmit={saveConfig} className="bg-white border border-slate-200 rounded-xl p-6 space-y-6">
@@ -1224,48 +1673,23 @@ export function SuperAdminDashboard({
                 </button>
               </form>
 
-              <form onSubmit={createPromo} className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
-                <h3 className="text-base font-bold text-[#102846]">Create Promotional Offer</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                  <input
-                    required
-                    placeholder="Code (e.g. TERM1GH)"
-                    value={promo.code}
-                    onChange={(e) => setPromo({ ...promo, code: e.target.value })}
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono uppercase"
-                  />
-                  <input
-                    required
-                    placeholder="Description"
-                    value={promo.description}
-                    onChange={(e) => setPromo({ ...promo, description: e.target.value })}
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  />
-                  <input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={promo.discountPercent}
-                    onChange={(e) => setPromo({ ...promo, discountPercent: Number(e.target.value) })}
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-mono"
-                  />
-                  <button
-                    type="submit"
-                    className="rounded-lg bg-[#102846] px-4 py-2 text-sm font-semibold text-white"
-                  >
-                    Add Offer
-                  </button>
+              <div className="bg-white border border-slate-200 rounded-xl p-6 flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-bold text-[#102846]">
+                    Promotional Coupons ({config.promotionalOffers.length})
+                  </h3>
+                  <p className="text-xs text-[#64748B] mt-0.5">
+                    Issue percentage or GH₵ discount coupons, assign coupons to specific schools, or pause active codes.
+                  </p>
                 </div>
-                {config.promotionalOffers.length > 0 && (
-                  <div className="text-xs text-[#64748B] space-y-1 pt-2">
-                    {config.promotionalOffers.map((o) => (
-                      <div key={o.code} className="font-mono">
-                        {o.code} · {o.discountPercent}% off · {o.description}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </form>
+                <button
+                  type="button"
+                  onClick={() => setTab('coupons')}
+                  className="rounded-lg bg-[#102846] px-4 py-2 text-xs font-semibold text-white"
+                >
+                  Open Coupons &amp; Grants
+                </button>
+              </div>
             </div>
           )}
 
@@ -1481,6 +1905,49 @@ export function SuperAdminDashboard({
             </div>
           )}
         </main>
+
+        {/* Mobile Bottom Thumb-Zone Navigation */}
+        <nav
+          aria-label="Admin quick navigation"
+          className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200 pb-safe"
+        >
+          <div className="grid grid-cols-5 h-14">
+            {[
+              { id: 'overview' as const, label: 'Overview', icon: <LayoutDashboard className="w-4 h-4" /> },
+              { id: 'schools' as const, label: 'Schools', icon: <Building2 className="w-4 h-4" /> },
+              { id: 'coupons' as const, label: 'Coupons', icon: <Ticket className="w-4 h-4" /> },
+              { id: 'plans' as const, label: 'Plans', icon: <Package className="w-4 h-4" /> },
+            ].map((item) => {
+              const active = tab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    setTab(item.id);
+                    setMobileNav(false);
+                  }}
+                  className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-semibold transition-colors ${
+                    active ? 'text-[#148D82]' : 'text-[#64748B]'
+                  }`}
+                >
+                  {item.icon}
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => setMobileNav((p) => !p)}
+              className={`flex flex-col items-center justify-center gap-0.5 text-[10px] font-semibold ${
+                mobileNav ? 'text-[#148D82]' : 'text-[#64748B]'
+              }`}
+            >
+              <Menu className="w-4 h-4" />
+              <span>All</span>
+            </button>
+          </div>
+        </nav>
       </div>
     </div>
   );

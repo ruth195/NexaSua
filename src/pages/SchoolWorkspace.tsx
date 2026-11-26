@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { BrandLogo, formatGhs } from '../components/BrandLogo';
 import { CandlelightToggle } from '../components/CandlelightToggle';
+import { PWAInstallButton } from '../components/PWAInstallButton';
 import {
   getSubscriptionCountdownState,
   SubscriptionStatusCard,
@@ -357,33 +358,34 @@ export function SchoolWorkspace({
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between">
-          <div className="flex items-center gap-3 min-w-0">
+        <header className="sticky top-0 z-30 h-14 sm:h-16 bg-white/95 backdrop-blur-sm border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
             <button
               type="button"
               onClick={() => setMobileNav((p) => !p)}
-              className="lg:hidden p-2 rounded-lg border border-slate-200 shrink-0"
+              className="lg:hidden inline-flex items-center justify-center p-2 rounded-lg border border-slate-200 shrink-0 min-w-[42px] min-h-[42px]"
               aria-label="Open workspace menu"
             >
               {mobileNav ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
-            <div className="text-sm font-semibold text-[#102846] truncate">
+            <div className="text-xs sm:text-sm font-semibold text-[#102846] truncate">
               {school?.name} / {allowedTabs.find((t) => t.id === tab)?.label || 'Dashboard'}
             </div>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            <PWAInstallButton compact />
             {onToggleCandlelight && (
               <CandlelightToggle enabled={candlelight} onToggle={onToggleCandlelight} />
             )}
-            <div className="text-xs text-[#64748B] hidden sm:block whitespace-nowrap">
+            <div className="text-xs text-[#64748B] hidden md:block whitespace-nowrap">
               {user.fullName} · {user.role.replace(/_/g, ' ')}
             </div>
           </div>
         </header>
 
         {mobileNav && (
-          <div className={`lg:hidden ${dashTheme.sidebarBgClass} text-white p-3 space-y-1`}>
+          <div className={`lg:hidden ${dashTheme.sidebarBgClass} text-white p-3 space-y-1 max-h-[calc(100vh-7rem)] overflow-y-auto`}>
             {allowedTabs.map((item) => (
               <button
                 key={item.id}
@@ -392,8 +394,8 @@ export function SchoolWorkspace({
                   selectTab(item.id);
                   setMobileNav(false);
                 }}
-                className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm ${
-                  tab === item.id ? `${dashTheme.accentBgClass} text-white` : 'text-slate-200'
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 min-h-[44px] rounded-xl text-sm ${
+                  tab === item.id ? `${dashTheme.accentBgClass} text-white font-semibold` : 'text-slate-200'
                 }`}
               >
                 {item.icon}
@@ -403,16 +405,16 @@ export function SchoolWorkspace({
             <button
               type="button"
               onClick={onLogout}
-              className="w-full text-left px-3 py-2 text-sm text-amber-300"
+              className="w-full text-left px-3.5 py-2.5 min-h-[44px] text-sm text-amber-300"
             >
               Sign Out
             </button>
           </div>
         )}
 
-        <main className="flex-1 p-4 sm:p-8 max-w-7xl w-full mx-auto space-y-6">
+        <main className="flex-1 p-3 sm:p-6 lg:p-8 pb-20 lg:pb-8 max-w-7xl w-full mx-auto space-y-5 sm:space-y-6">
           {isAdminUser && school && (
-            <div className="rounded-xl bg-[#102846] text-white px-4 py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+            <div className="rounded-xl bg-[#102846] text-white px-3.5 sm:px-4 py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
               <div className="text-xs space-y-0.5">
                 <div>
                   <span className="font-bold text-[#E2A83B]">
@@ -426,12 +428,12 @@ export function SchoolWorkspace({
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2">
                 <select
                   aria-label="Preview Plan Tier"
                   value={planPreview}
                   onChange={(e) => setPlanPreview(e.target.value as 'ALL' | 'CORE' | 'COMPLETE')}
-                  className="rounded-lg border border-white/25 bg-[#193a63] px-2.5 py-1.5 text-xs font-semibold text-white"
+                  className="w-full sm:w-auto rounded-lg border border-white/25 bg-[#193a63] px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-white"
                 >
                   <option value="ALL">Plan View: All Plans Unlocked</option>
                   <option value="CORE">Plan View: NexaSua Core</option>
@@ -901,6 +903,62 @@ export function SchoolWorkspace({
             </>
           )}
         </main>
+
+        {/* Mobile Thumb-Zone Bottom Tab Bar */}
+        {!portalClosed && !isStudentOrParent && allowedTabs.length > 1 && (
+          <nav
+            aria-label="Mobile quick navigation"
+            className="lg:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 backdrop-blur-md border-t border-slate-200 pb-safe"
+          >
+            <div className="grid grid-cols-5 h-14 items-center">
+              {(['overview', 'students', 'marks', 'finance', 'settings'] as WorkspaceTab[])
+                .filter((id) => allowedTabs.some((t) => t.id === id))
+                .slice(0, 4)
+                .map((id) => {
+                  const item = allowedTabs.find((t) => t.id === id)!;
+                  const active = tab === item.id;
+                  const shortLabel =
+                    id === 'overview'
+                      ? 'Home'
+                      : id === 'students'
+                        ? 'Students'
+                        : id === 'marks'
+                          ? 'Marks'
+                          : id === 'finance'
+                            ? 'Fees'
+                            : 'Settings';
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        selectTab(item.id);
+                        setMobileNav(false);
+                      }}
+                      className={`flex flex-col items-center justify-center min-h-[44px] px-1 transition-colors ${
+                        active ? 'text-[#148D82] font-semibold' : 'text-[#64748B]'
+                      }`}
+                    >
+                      {item.icon}
+                      <span className="text-[10px] tracking-tight mt-0.5 truncate max-w-full">
+                        {shortLabel}
+                      </span>
+                    </button>
+                  );
+                })}
+              <button
+                type="button"
+                onClick={() => setMobileNav((p) => !p)}
+                className={`flex flex-col items-center justify-center min-h-[44px] px-1 transition-colors ${
+                  mobileNav ? 'text-[#148D82] font-semibold' : 'text-[#64748B]'
+                }`}
+              >
+                <Menu className="w-4 h-4" />
+                <span className="text-[10px] tracking-tight mt-0.5">All</span>
+              </button>
+            </div>
+          </nav>
+        )}
       </div>
     </div>
   );

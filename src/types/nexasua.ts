@@ -115,6 +115,21 @@ export interface PricingBand {
   isCustomQuote: boolean;
 }
 
+export interface CouponOffer {
+  code: string;
+  description: string;
+  discountType?: 'PERCENT' | 'FIXED_GHS';
+  discountPercent: number;
+  discountAmountGhs?: number;
+  applicablePlan: 'ALL' | 'CORE' | 'COMPLETE';
+  assignedSchoolId?: string | null;
+  assignedSchoolName?: string;
+  maxUses?: number | null;
+  usedCount?: number;
+  active: boolean;
+  expiresAt?: string | null;
+}
+
 export interface IntegrationItem {
   name: string;
   status: 'Not Configured' | 'Testing' | 'Connected' | 'Error';

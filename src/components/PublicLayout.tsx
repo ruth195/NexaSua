@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Menu, X } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { CandlelightToggle } from './CandlelightToggle';
+import { PWAInstallButton } from './PWAInstallButton';
 
 export function PublicLayout({
   currentPath,
@@ -37,13 +38,13 @@ export function PublicLayout({
   return (
     <div className="min-h-screen flex flex-col bg-[#FBF8F1] text-[#102846]">
       {platformAnnouncement && (
-        <div className="bg-[#102846] text-white text-xs py-2 px-4 text-center">
+        <div className="bg-[#102846] text-white text-xs py-1.5 px-3 text-center truncate">
           {platformAnnouncement}
         </div>
       )}
 
       <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-slate-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-8">
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-14 sm:h-16 flex items-center justify-between gap-2 sm:gap-6">
           {/* Zone 1: Single Brand Mark */}
           <button
             type="button"
@@ -55,7 +56,7 @@ export function PublicLayout({
           </button>
 
           {/* Zone 2: 5 concise single-line text links */}
-          <nav className="hidden md:flex items-center gap-7 text-sm font-medium text-[#102846]">
+          <nav className="hidden md:flex items-center gap-6 lg:gap-7 text-sm font-medium text-[#102846]">
             {navLinks.map((link) => {
               const active = currentPath === link.path;
               return (
@@ -75,8 +76,10 @@ export function PublicLayout({
             })}
           </nav>
 
-          {/* Zone 3: Candlelight toggle + primary CTA + mobile menu toggle */}
-          <div className="flex items-center gap-3 shrink-0">
+          {/* Zone 3: Top Install App button + Candlelight toggle + primary CTA + mobile menu toggle */}
+          <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+            <PWAInstallButton compact />
+
             {onToggleCandlelight && (
               <CandlelightToggle enabled={candlelight} onToggle={onToggleCandlelight} />
             )}
@@ -92,7 +95,7 @@ export function PublicLayout({
             <button
               type="button"
               onClick={() => setMobileOpen((prev) => !prev)}
-              className="md:hidden inline-flex items-center justify-center p-2 rounded-lg border border-slate-200 text-[#102846] min-w-[44px] min-h-[44px]"
+              className="md:hidden inline-flex items-center justify-center p-2 rounded-lg border border-slate-200 text-[#102846] min-w-[42px] min-h-[42px]"
               aria-label="Toggle navigation menu"
             >
               {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -101,7 +104,7 @@ export function PublicLayout({
         </div>
 
         {mobileOpen && (
-          <div className="md:hidden border-t border-slate-200 bg-white px-4 py-4 space-y-2">
+          <div className="md:hidden border-t border-slate-200 bg-white px-4 py-3 space-y-1 max-h-[calc(100vh-3.5rem)] overflow-y-auto pb-safe">
             {[
               { label: 'Home', path: '/' },
               { label: 'Features', path: '/features' },
@@ -115,20 +118,27 @@ export function PublicLayout({
               { label: 'Contact', path: '/contact' },
               { label: 'FAQ', path: '/faq' },
               { label: 'School Portal Login', path: '/login' },
-            ].map((item) => (
-              <button
-                key={item.path}
-                type="button"
-                onClick={() => go(item.path)}
-                className="block w-full text-left px-3 py-2.5 rounded-lg text-sm font-medium text-[#102846] hover:bg-[#FBF8F1]"
-              >
-                {item.label}
-              </button>
-            ))}
+            ].map((item) => {
+              const active = currentPath === item.path;
+              return (
+                <button
+                  key={item.path}
+                  type="button"
+                  onClick={() => go(item.path)}
+                  className={`block w-full text-left px-3.5 py-2.5 min-h-[44px] rounded-xl text-sm font-medium transition-colors ${
+                    active
+                      ? 'bg-[#102846] text-white font-semibold'
+                      : 'text-[#102846] hover:bg-[#FBF8F1]'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
             <button
               type="button"
               onClick={() => go('/register')}
-              className="w-full mt-2 rounded-lg bg-[#148D82] px-4 py-3 text-sm font-semibold text-white"
+              className="w-full mt-2 min-h-[48px] rounded-xl bg-[#148D82] px-4 py-3 text-sm font-semibold text-white"
             >
               Register Your School
             </button>
