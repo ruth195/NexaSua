@@ -16,6 +16,7 @@ import type {
   SchoolSummary,
   SubscriptionPlan,
   SubscriptionSummary,
+  UserRole,
 } from './types/nexasua';
 
 export default function App() {
@@ -29,6 +30,8 @@ export default function App() {
     school: SchoolSummary;
     subscription: SubscriptionSummary | null;
   } | null>(null);
+  const [superAdminRolePreview, setSuperAdminRolePreview] = useState<'AUTO' | UserRole>('AUTO');
+  const [autoTourBanner, setAutoTourBanner] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
 
   const [selectedPlan, setSelectedPlan] = useState<SubscriptionPlan>('COMPLETE');
@@ -122,19 +125,44 @@ export default function App() {
     setMemoryAuthToken(null);
     setActiveAdminSchoolId(null);
     setAdminWorkspace(null);
+    setSuperAdminRolePreview('AUTO');
+    setAutoTourBanner(false);
     setUser(null);
     setSchool(null);
     setSubscription(null);
     navigate('/');
   };
 
-  const openAdminWorkspace = (ctx: {
-    school: SchoolSummary;
-    subscription: SubscriptionSummary | null;
-  }) => {
+  const openAdminWorkspace = (
+    ctx: {
+      school: SchoolSummary;
+      subscription: SubscriptionSummary | null;
+    },
+    initialRole: 'AUTO' | UserRole = 'AUTO'
+  ) => {
     const schoolId = ctx.school.id || ctx.school._id || null;
     setActiveAdminSchoolId(schoolId);
+    setSuperAdminRolePreview(initialRole);
     setAdminWorkspace(ctx);
+  };
+
+  const autoOpenAllDashboards = async (
+    initialRole: 'AUTO' | UserRole = 'AUTO',
+    fromGoogle = false
+  ) => {
+    try {
+      const ctx = await apiFetch<{
+        school: SchoolSummary;
+        subscription: SubscriptionSummary | null;
+      }>('/api/super-admin/ensure-admin-workspace', {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      setAutoTourBanner(fromGoogle);
+      openAdminWorkspace(ctx, initialRole);
+    } catch {
+      // Fallback to SuperAdminDashboard if workspace auto-open fails
+    }
   };
 
   const refreshAdminWorkspace = async () => {
@@ -158,19 +186,28 @@ export default function App() {
   if (path === '/nexaflow-admin') {
     if (user && user.role === 'SUPER_ADMIN') {
       if (adminWorkspace) {
+        const activeWorkspaceSchoolId =
+          adminWorkspace.school.id || adminWorkspace.school._id || 'admin-workspace';
         return (
           <>
             {candlelightOverlay}
             <SchoolWorkspace
+              key={activeWorkspaceSchoolId}
               user={user}
               school={adminWorkspace.school}
               subscription={adminWorkspace.subscription}
+              initialRolePreview={superAdminRolePreview}
+              onRolePreviewChange={setSuperAdminRolePreview}
+              autoOpenedViaGoogle={autoTourBanner}
+              onDismissAutoBanner={() => setAutoTourBanner(false)}
+              onSwitchAdminSchool={(nextCtx) => openAdminWorkspace(nextCtx, superAdminRolePreview)}
               candlelight={candlelight}
               onToggleCandlelight={toggleCandlelight}
               onRefreshAuth={() => void refreshAdminWorkspace()}
               onExitAdminWorkspace={() => {
                 setActiveAdminSchoolId(null);
                 setAdminWorkspace(null);
+                setAutoTourBanner(false);
               }}
               onLogout={() => void handleLogout()}
             />
@@ -201,6 +238,9 @@ export default function App() {
             setUser(data.user);
             void refreshHealthAndSession();
             navigate('/nexaflow-admin');
+            if (data.autoOpenAllDashboards) {
+              void autoOpenAllDashboards('AUTO', true);
+            }
           }}
         />
       </>
@@ -219,6 +259,26 @@ export default function App() {
           candlelight={candlelight}
           onToggleCandlelight={toggleCandlelight}
           onRefreshAuth={() => void refreshHealthAndSession()}
+          onLogout={() => void handleLogout()}
+        />
+      </>
+    );
+  }
+
+  if (user && user.role === 'SUPER_ADMIN' && (path === '/dashboard' || path === '/login')) {
+    return (
+      <>
+        {candlelightOverlay}
+        <SuperAdminDashboard
+          user={user}
+          superAdminManagedBySecrets={superAdminManagedBySecrets}
+          candlelight={candlelight}
+          onToggleCandlelight={toggleCandlelight}
+          onUserUpdated={(next) => setUser(next)}
+          onOpenWorkspace={(ctx, role = 'AUTO') => {
+            openAdminWorkspace(ctx, role);
+            navigate('/nexaflow-admin');
+          }}
           onLogout={() => void handleLogout()}
         />
       </>
@@ -247,32 +307,27 @@ export default function App() {
           onNavigate={navigate}
         />
       ) : path === '/login' ? (
-        authChecked && user ? (
-        <SchoolWorkspace
-          user={user}
-          school={school}
-          subscription={subscription}
-          candlelight={candlelight}
-          onToggleCandlelight={toggleCandlelight}
-          onRefreshAuth={() => void refreshHealthAndSession()}
-          onLogout={() => void handleLogout()}
+        <LoginPage
+          googleOAuthEnabled={Boolean(health?.googleOAuthEnabled)}
+          onNavigate={navigate}
+          onStartGoogleRegistration={(data) => {
+            setGoogleOnboarding(data);
+            navigate('/register');
+          }}
+          onLoginSuccess={(data) => {
+            setUser(data.user);
+            setSchool(data.school);
+            setSubscription(data.subscription);
+            if (data.user.role === 'SUPER_ADMIN') {
+              navigate('/nexaflow-admin');
+              if (data.autoOpenAllDashboards) {
+                void autoOpenAllDashboards('AUTO', true);
+              }
+            } else {
+              navigate('/dashboard');
+            }
+          }}
         />
-        ) : (
-          <LoginPage
-            googleOAuthEnabled={Boolean(health?.googleOAuthEnabled)}
-            onNavigate={navigate}
-            onStartGoogleRegistration={(data) => {
-              setGoogleOnboarding(data);
-              navigate('/register');
-            }}
-            onLoginSuccess={(data) => {
-              setUser(data.user);
-              setSchool(data.school);
-              setSubscription(data.subscription);
-              navigate(data.user.role === 'SUPER_ADMIN' ? '/nexaflow-admin' : '/dashboard');
-            }}
-          />
-        )
       ) : (
         <PublicPageRouter
           path={path}

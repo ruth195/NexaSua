@@ -19,6 +19,7 @@ export interface AuthUser {
   schoolId: string | null;
   mfaEnabled: boolean;
   emailVerified: boolean;
+  linkedGoogleEmail?: string;
 }
 
 export interface DashboardSettings {

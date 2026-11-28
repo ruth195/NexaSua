@@ -1,12 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import {
   Building2,
+  CheckCircle2,
+  ChevronRight,
   ClipboardList,
   Copy,
   CreditCard,
   Gift,
   LayoutDashboard,
   LifeBuoy,
+  Link2,
   LogOut,
   Menu,
   Package,
@@ -15,6 +18,7 @@ import {
   ShieldAlert,
   Ticket,
   Trash2,
+  Unlink,
   X,
 } from 'lucide-react';
 import { BrandLogo, EmptyState, formatGhanaDate, formatGhs } from '../components/BrandLogo';
@@ -29,6 +33,7 @@ import type {
   PricingBand,
   SchoolSummary,
   SubscriptionSummary,
+  UserRole,
 } from '../types/nexasua';
 
 type SuperTab =
@@ -55,10 +60,13 @@ export function SuperAdminDashboard({
   candlelight?: boolean;
   onToggleCandlelight?: () => void;
   onUserUpdated?: (next: AuthUser) => void;
-  onOpenWorkspace?: (ctx: {
-    school: SchoolSummary;
-    subscription: SubscriptionSummary | null;
-  }) => void;
+  onOpenWorkspace?: (
+    ctx: {
+      school: SchoolSummary;
+      subscription: SubscriptionSummary | null;
+    },
+    initialRole?: 'AUTO' | UserRole
+  ) => void;
   onLogout: () => void;
 }) {
   const [tab, setTab] = useState<SuperTab>('overview');
@@ -136,13 +144,43 @@ export function SuperAdminDashboard({
   });
   const [credBusy, setCredBusy] = useState(false);
 
+  // Super Admin Google linking
+  const [linkedGoogleEmailInput, setLinkedGoogleEmailInput] = useState(
+    user.linkedGoogleEmail || ''
+  );
+  const [googleLinkBusy, setGoogleLinkBusy] = useState(false);
+
   useEffect(() => {
     setCredForm((prev) => ({
       ...prev,
       fullName: user.fullName,
       newEmail: user.email,
     }));
-  }, [user.fullName, user.email]);
+    setLinkedGoogleEmailInput(user.linkedGoogleEmail || '');
+  }, [user.fullName, user.email, user.linkedGoogleEmail]);
+
+  useEffect(() => {
+    const onOAuthMsg = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      const d = event.data;
+      if (!d || typeof d !== 'object') return;
+      if (d.type === 'NEXASUA_SUPER_ADMIN_GOOGLE_LINKED' && d.user) {
+        setGoogleLinkBusy(false);
+        setError('');
+        setLinkedGoogleEmailInput(d.linkedGoogleEmail || '');
+        setBanner(
+          `Connected Google account (${d.linkedGoogleEmail}). Signing in with this Google account will automatically open all dashboards.`
+        );
+        onUserUpdated?.(d.user);
+        void loadAll();
+      } else if (d.type === 'NEXASUA_GOOGLE_ERROR') {
+        setGoogleLinkBusy(false);
+        setError(d.error || 'Unable to link Google account.');
+      }
+    };
+    window.addEventListener('message', onOAuthMsg);
+    return () => window.removeEventListener('message', onOAuthMsg);
+  }, [onUserUpdated]);
 
   const loadAll = async () => {
     try {
@@ -230,16 +268,56 @@ export function SuperAdminDashboard({
     }
   };
 
-  const launchAllPlansWorkspace = async () => {
+  const launchAllPlansWorkspace = async (initialRole: 'AUTO' | UserRole = 'AUTO') => {
     setError('');
     try {
       const ctx = await apiFetch<{
         school: SchoolSummary;
         subscription: SubscriptionSummary | null;
       }>('/api/super-admin/ensure-admin-workspace', { method: 'POST', body: JSON.stringify({}) });
-      onOpenWorkspace?.(ctx);
+      onOpenWorkspace?.(ctx, initialRole);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to open workspace.');
+    }
+  };
+
+  const connectGoogleViaPopup = async () => {
+    setBanner('');
+    setError('');
+    setGoogleLinkBusy(true);
+    try {
+      const { url } = await apiFetch<{ url: string }>('/api/auth/google/url?intent=link_super_admin');
+      const popup = window.open(url, 'nexasua_google_link', 'width=520,height=640');
+      if (!popup) {
+        setGoogleLinkBusy(false);
+        setError('Please allow popups for this site to connect your Google account.');
+      }
+    } catch (err) {
+      setGoogleLinkBusy(false);
+      setError(err instanceof Error ? err.message : 'Unable to start Google account linking.');
+    }
+  };
+
+  const saveLinkedGoogleEmail = async (emailToSave: string) => {
+    setBanner('');
+    setError('');
+    setGoogleLinkBusy(true);
+    try {
+      const res = await apiFetch<{ message: string; user: AuthUser }>(
+        '/api/auth/super-admin/google-link',
+        {
+          method: 'PUT',
+          body: JSON.stringify({ linkedGoogleEmail: emailToSave }),
+        }
+      );
+      setBanner(res.message);
+      setLinkedGoogleEmailInput(res.user.linkedGoogleEmail || '');
+      onUserUpdated?.(res.user);
+      await loadAll();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update linked Google account.');
+    } finally {
+      setGoogleLinkBusy(false);
     }
   };
 
@@ -579,60 +657,137 @@ export function SuperAdminDashboard({
 
           {tab === 'overview' && overview && (
             <div className="space-y-8">
-              <div className="bg-white border border-slate-200 rounded-xl p-6 flex flex-wrap items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-base font-bold text-[#102846]">
-                    Full Platform &amp; All-Plans Access
-                  </h2>
-                  <p className="text-xs text-[#64748B] mt-1">
-                    Enter any school workspace with NexaSua Core, Complete, Finance, Report Cards,
-                    Admissions, Staff HR, and Timetables unlocked, or configure plans directly.
-                  </p>
+              <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-base font-bold text-[#102846]">
+                      Full Platform &amp; All-Plans Access
+                    </h2>
+                    <p className="text-xs text-[#64748B] mt-1">
+                      Open any school workspace with Core, Complete, Finance, Report Cards,
+                      Admissions, Staff HR, and Timetables unlocked, or walk through every role dashboard.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void launchAllPlansWorkspace('AUTO')}
+                      className="rounded-lg bg-[#148D82] hover:bg-[#10766c] px-4 py-2 text-xs font-semibold text-white"
+                    >
+                      Open Full School Workspace (All Plans)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTab('schools')}
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-[#102846] hover:bg-[#FBF8F1]"
+                    >
+                      Schools &amp; Plan Assignment
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTab('plans')}
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-[#102846] hover:bg-[#FBF8F1]"
+                    >
+                      Manage Subscription Plans
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTab('coupons')}
+                      className="rounded-lg border border-[#148D82]/40 bg-[#148D82]/5 px-3 py-2 text-xs font-semibold text-[#102846] hover:bg-[#148D82]/10 inline-flex items-center gap-1.5"
+                    >
+                      <Ticket className="w-3.5 h-3.5 text-[#148D82]" />
+                      Coupons &amp; Grants
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTab('pricing')}
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-[#102846] hover:bg-[#FBF8F1]"
+                    >
+                      Pricing Bands &amp; Offers
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTab('custom')}
+                      className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-[#102846] hover:bg-[#FBF8F1]"
+                    >
+                      Custom Projects
+                    </button>
+                  </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void launchAllPlansWorkspace()}
-                    className="rounded-lg bg-[#148D82] hover:bg-[#10766c] px-4 py-2 text-xs font-semibold text-white"
-                  >
-                    Open Full School Workspace (All Plans)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTab('schools')}
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-[#102846] hover:bg-[#FBF8F1]"
-                  >
-                    Schools &amp; Plan Assignment
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTab('plans')}
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-[#102846] hover:bg-[#FBF8F1]"
-                  >
-                    Manage Subscription Plans
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTab('coupons')}
-                    className="rounded-lg border border-[#148D82]/40 bg-[#148D82]/5 px-3 py-2 text-xs font-semibold text-[#102846] hover:bg-[#148D82]/10 inline-flex items-center gap-1.5"
-                  >
-                    <Ticket className="w-3.5 h-3.5 text-[#148D82]" />
-                    Coupons &amp; Grants
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTab('pricing')}
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-[#102846] hover:bg-[#FBF8F1]"
-                  >
-                    Pricing Bands &amp; Offers
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTab('custom')}
-                    className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-[#102846] hover:bg-[#FBF8F1]"
-                  >
-                    Custom Projects
-                  </button>
+
+                {/* One-click Role Dashboard Launcher */}
+                <div className="pt-4 border-t border-slate-100 space-y-2">
+                  <div className="text-xs font-semibold text-[#102846]">
+                    Jump Directly Into Any Role Dashboard:
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {(
+                      [
+                        ['AUTO', 'School Admin (All Plans)'],
+                        ['HEADTEACHER', 'Headteacher'],
+                        ['CLASS_TEACHER', 'Class Teacher'],
+                        ['SUBJECT_TEACHER', 'Subject Teacher'],
+                        ['BURSAR', 'Bursar / Finance'],
+                        ['ADMIN_STAFF', 'Admin Staff'],
+                        ['STUDENT', 'Student Portal'],
+                        ['PARENT', 'Parent / Guardian'],
+                      ] as Array<['AUTO' | UserRole, string]>
+                    ).map(([roleKey, roleLabel]) => (
+                      <button
+                        key={roleKey}
+                        type="button"
+                        onClick={() => void launchAllPlansWorkspace(roleKey)}
+                        className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-[#FBF8F1] hover:border-[#148D82] hover:bg-white px-3 py-1.5 text-xs font-semibold text-[#102846] transition-colors"
+                      >
+                        <span>{roleLabel}</span>
+                        <ChevronRight className="w-3.5 h-3.5 text-[#148D82]" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Linked Google Account Status Strip */}
+                <div className="pt-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-xs">
+                    {user.linkedGoogleEmail ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 text-[#148D82] shrink-0" />
+                        <span className="text-[#102846]">
+                          Google Auto-Open Linked:{' '}
+                          <strong className="font-mono">{user.linkedGoogleEmail}</strong>
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Link2 className="w-4 h-4 text-[#E2A83B] shrink-0" />
+                        <span className="text-[#64748B]">
+                          Link your Google account so signing in with Google automatically opens all dashboards.
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={googleLinkBusy}
+                      onClick={() => void connectGoogleViaPopup()}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-[#102846] hover:bg-[#193a63] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                    >
+                      <Link2 className="w-3.5 h-3.5" />
+                      {googleLinkBusy
+                        ? 'Connecting...'
+                        : user.linkedGoogleEmail
+                          ? 'Switch Google Account'
+                          : 'Connect Google Account'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTab('audit')}
+                      className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-[#102846] hover:bg-[#FBF8F1]"
+                    >
+                      Manage Link
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1792,6 +1947,70 @@ export function SuperAdminDashboard({
 
           {tab === 'audit' && (
             <div className="space-y-6">
+              <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-base font-bold text-[#102846]">
+                      Google Account Link (Auto-Open All Dashboards)
+                    </h2>
+                    <p className="text-xs text-[#64748B] mt-1">
+                      Connect your Google account below. Whenever you sign in with this linked Google account on the Super Admin portal or main login page, NexaSua automatically authenticates you as Super Admin and opens all school &amp; role dashboards for walkthrough.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={googleLinkBusy}
+                    onClick={() => void connectGoogleViaPopup()}
+                    className="inline-flex items-center gap-2 rounded-lg bg-[#148D82] hover:bg-[#10766c] px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                  >
+                    <Link2 className="w-4 h-4" />
+                    {googleLinkBusy ? 'Connecting...' : 'Connect with Google Popup'}
+                  </button>
+                </div>
+
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void saveLinkedGoogleEmail(linkedGoogleEmailInput);
+                  }}
+                  className="flex flex-col sm:flex-row gap-3 pt-1"
+                >
+                  <input
+                    type="email"
+                    value={linkedGoogleEmailInput}
+                    onChange={(e) => setLinkedGoogleEmailInput(e.target.value)}
+                    placeholder="your-google-account@gmail.com"
+                    className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  />
+                  <button
+                    type="submit"
+                    disabled={googleLinkBusy}
+                    className="rounded-lg bg-[#102846] hover:bg-[#193a63] px-4 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                  >
+                    Save Linked Google Email
+                  </button>
+                  {user.linkedGoogleEmail && (
+                    <button
+                      type="button"
+                      disabled={googleLinkBusy}
+                      onClick={() => void saveLinkedGoogleEmail('')}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-semibold text-red-700 hover:bg-red-100 disabled:opacity-60"
+                    >
+                      <Unlink className="w-3.5 h-3.5" /> Unlink
+                    </button>
+                  )}
+                </form>
+
+                {user.linkedGoogleEmail && (
+                  <div className="text-xs text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2 inline-flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>
+                      Linked Google Account: <strong className="font-mono">{user.linkedGoogleEmail}</strong>
+                    </span>
+                  </div>
+                )}
+              </div>
+
               <div className="bg-white border border-slate-200 rounded-xl p-6 space-y-4">
                 <div>
                   <h2 className="text-base font-bold text-[#102846]">

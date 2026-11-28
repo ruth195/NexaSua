@@ -9,7 +9,9 @@ import {
   getJwtSecret,
   getSchoolAdminEnvCredentials,
   getSuperAdminEnvCredentials,
+  getSuperAdminGoogleEmails,
   isGoogleOAuthConfigured,
+  matchSuperAdminGoogleAccount,
   verifyEnvSecretMatch,
 } from '../config/env.js';
 import { isDbConnected } from '../db.js';
@@ -39,6 +41,7 @@ import {
   hashToken,
   signSessionToken,
   verifyPassword,
+  verifySessionToken,
   verifyTotpCode,
   writeAuditLog,
 } from '../services/securityService.js';
@@ -137,6 +140,7 @@ router.get('/super-admin-status', async (_req, res) => {
       superAdminInitialized: envCreds.configured,
       superAdminManagedBySecrets: envCreds.configured,
       adminManagedBySecrets: adminEnvCreds.configured,
+      googleOAuthEnabled: isGoogleOAuthConfigured(),
       setupKeyRequired: Boolean(process.env.SUPER_ADMIN_SETUP_KEY?.trim()),
     });
     return;
@@ -153,6 +157,7 @@ router.get('/super-admin-status', async (_req, res) => {
     superAdminInitialized: initialized,
     superAdminManagedBySecrets: envCreds.configured,
     adminManagedBySecrets: adminEnvCreds.configured,
+    googleOAuthEnabled: isGoogleOAuthConfigured(),
     setupKeyRequired: Boolean(process.env.SUPER_ADMIN_SETUP_KEY?.trim()),
   });
 });
@@ -453,6 +458,7 @@ router.post('/login', authLimiter, requireDb, async (req, res) => {
       schoolId: user.schoolId,
       mfaEnabled: user.mfaEnabled,
       emailVerified: user.emailVerified,
+      linkedGoogleEmail: (user as { linkedGoogleEmail?: string }).linkedGoogleEmail || '',
     },
     school: schoolResolved.schoolInfo,
     subscription: schoolResolved.subscriptionInfo,
@@ -530,15 +536,83 @@ router.put(
         fullName: user.fullName,
         role: user.role,
         mfaEnabled: user.mfaEnabled,
+        linkedGoogleEmail: user.linkedGoogleEmail || '',
+      },
+    });
+  }
+);
+
+const linkSuperAdminGoogleSchema = z.object({
+  linkedGoogleEmail: z.string().trim().max(160).default(''),
+});
+
+router.put(
+  '/super-admin/google-link',
+  requireDb,
+  authenticate,
+  requireRole('SUPER_ADMIN'),
+  async (req: AuthenticatedRequest, res) => {
+    const body = parseBody(linkSuperAdminGoogleSchema, req, res);
+    if (!body) return;
+
+    const cleanGoogleEmail = body.linkedGoogleEmail.toLowerCase().trim();
+    if (cleanGoogleEmail) {
+      const emailCheck = z.string().email().safeParse(cleanGoogleEmail);
+      if (!emailCheck.success) {
+        res.status(400).json({ error: 'Please enter a valid Google email address.' });
+        return;
+      }
+    }
+
+    const user = await UserModel.findById(req.authUser!._id);
+    if (!user || user.role !== 'SUPER_ADMIN') {
+      res.status(404).json({ error: 'Super Admin account not found.' });
+      return;
+    }
+
+    const previousEmail = user.linkedGoogleEmail || '';
+    user.linkedGoogleEmail = cleanGoogleEmail;
+    if (!cleanGoogleEmail || previousEmail !== cleanGoogleEmail) {
+      user.googleId = '';
+    }
+    if (cleanGoogleEmail && user.authProvider === 'LOCAL') {
+      user.authProvider = 'HYBRID';
+    }
+    await user.save();
+
+    await writeAuditLog({
+      userId: String(user._id),
+      userEmail: user.email,
+      userRole: user.role,
+      action: cleanGoogleEmail ? 'SUPER_ADMIN_GOOGLE_LINKED' : 'SUPER_ADMIN_GOOGLE_UNLINKED',
+      resourceType: 'User',
+      resourceId: String(user._id),
+      details: { linkedGoogleEmail: cleanGoogleEmail || null },
+      ipAddress: req.ip,
+    });
+
+    res.json({
+      message: cleanGoogleEmail
+        ? `Linked Google account (${cleanGoogleEmail}) to Super Admin. Signing in with this Google account will automatically open all dashboards.`
+        : 'Google account link removed from Super Admin.',
+      user: {
+        id: user._id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+        schoolId: user.schoolId,
+        mfaEnabled: user.mfaEnabled,
+        emailVerified: user.emailVerified,
+        linkedGoogleEmail: user.linkedGoogleEmail || '',
       },
     });
   }
 );
 
 // =====================
-// GOOGLE SIGN-IN FOR SCHOOL USERS (EXCLUDES SUPER ADMIN)
+// GOOGLE SIGN-IN (SCHOOL USERS & AUTHORIZED/LINKED SUPER ADMIN)
 // =====================
-router.get('/google/url', (req, res) => {
+router.get('/google/url', async (req, res) => {
   if (!isGoogleOAuthConfigured()) {
     res.status(503).json({
       error:
@@ -548,12 +622,49 @@ router.get('/google/url', (req, res) => {
     return;
   }
 
-  const intent = req.query.intent === 'register' ? 'register' : 'login';
+  const rawIntent = String(req.query.intent || 'login');
+  const intent =
+    rawIntent === 'register' ||
+    rawIntent === 'super_admin' ||
+    rawIntent === 'link_super_admin'
+      ? rawIntent
+      : 'login';
+
+  let linkUserId: string | undefined;
+  if (intent === 'link_super_admin') {
+    if (!isDbConnected()) {
+      res.status(503).json({ error: 'Database is not connected.' });
+      return;
+    }
+    const authHeader = req.headers.authorization;
+    const rawToken =
+      authHeader && authHeader.startsWith('Bearer ')
+        ? authHeader.slice(7).trim()
+        : req.cookies?.nexasua_session
+          ? String(req.cookies.nexasua_session)
+          : '';
+    const payload = rawToken ? verifySessionToken(rawToken) : null;
+    const requester = payload ? await UserModel.findById(payload.userId).lean() : null;
+    if (
+      !requester ||
+      requester.status !== 'ACTIVE' ||
+      requester.role !== 'SUPER_ADMIN' ||
+      (requester.mfaEnabled && !payload?.mfaVerified)
+    ) {
+      res.status(403).json({
+        error: 'Only an authenticated Super Admin can link a Google account.',
+      });
+      return;
+    }
+    linkUserId = String(requester._id);
+  }
+
   const redirectUri = `${getBaseUrl(req)}/api/auth/google/callback`;
   const stateToken = jwt.sign(
     {
       nonce: crypto.randomBytes(12).toString('hex'),
       intent,
+      linkUserId,
       redirectUri,
       stage: 'GOOGLE_OAUTH_STATE',
     },
@@ -619,11 +730,12 @@ async function handleGoogleCallback(req: express.Request, res: express.Response)
     return;
   }
 
-  let state: { stage?: string; intent?: string; redirectUri?: string };
+  let state: { stage?: string; intent?: string; linkUserId?: string; redirectUri?: string };
   try {
     state = jwt.verify(stateRaw, getJwtSecret()) as {
       stage?: string;
       intent?: string;
+      linkUserId?: string;
       redirectUri?: string;
     };
   } catch {
@@ -699,11 +811,185 @@ async function handleGoogleCallback(req: express.Request, res: express.Response)
     }
 
     const email = profile.email.toLowerCase().trim();
-    const envCreds = getSuperAdminEnvCredentials();
-    if (envCreds.configured && email === envCreds.email) {
+
+    // 1. Authenticated Super Admin explicitly linking their Google account
+    if (state.intent === 'link_super_admin' && state.linkUserId) {
+      const targetSuperAdmin = await UserModel.findById(state.linkUserId);
+      if (
+        !targetSuperAdmin ||
+        targetSuperAdmin.role !== 'SUPER_ADMIN' ||
+        targetSuperAdmin.status !== 'ACTIVE'
+      ) {
+        sendGooglePopupHtml(res, {
+          type: 'NEXASUA_GOOGLE_ERROR',
+          error: 'Super Admin account not found or inactive.',
+        });
+        return;
+      }
+
+      targetSuperAdmin.linkedGoogleEmail = email;
+      targetSuperAdmin.googleId = profile.sub;
+      targetSuperAdmin.emailVerified = true;
+      if (targetSuperAdmin.authProvider === 'LOCAL') {
+        targetSuperAdmin.authProvider = 'HYBRID';
+      }
+      await targetSuperAdmin.save();
+
+      await writeAuditLog({
+        userId: String(targetSuperAdmin._id),
+        userEmail: targetSuperAdmin.email,
+        userRole: targetSuperAdmin.role,
+        action: 'SUPER_ADMIN_GOOGLE_LINKED',
+        resourceType: 'User',
+        resourceId: String(targetSuperAdmin._id),
+        details: { linkedGoogleEmail: email },
+        ipAddress: req.ip,
+      });
+
+      sendGooglePopupHtml(res, {
+        type: 'NEXASUA_SUPER_ADMIN_GOOGLE_LINKED',
+        linkedGoogleEmail: email,
+        user: {
+          id: targetSuperAdmin._id,
+          email: targetSuperAdmin.email,
+          fullName: targetSuperAdmin.fullName,
+          role: targetSuperAdmin.role,
+          schoolId: targetSuperAdmin.schoolId,
+          mfaEnabled: targetSuperAdmin.mfaEnabled,
+          emailVerified: targetSuperAdmin.emailVerified,
+          linkedGoogleEmail: targetSuperAdmin.linkedGoogleEmail,
+        },
+      });
+      return;
+    }
+
+    // 2. Authorized or linked Super Admin Google Sign-In
+    const superAdminUsers = await UserModel.find({ role: 'SUPER_ADMIN' })
+      .select('_id email linkedGoogleEmail googleId status')
+      .lean();
+    const superAdminMatch = matchSuperAdminGoogleAccount({
+      verifiedEmail: email,
+      googleSub: profile.sub,
+      envGoogleEmails: getSuperAdminGoogleEmails(),
+      superAdminUsers,
+    });
+
+    if (superAdminMatch.authorized) {
+      const envCreds = getSuperAdminEnvCredentials();
+      let saUser = superAdminMatch.matchedUserId
+        ? await UserModel.findById(superAdminMatch.matchedUserId)
+        : null;
+
+      if (!saUser) {
+        const canonicalEmail = envCreds.configured ? envCreds.email : email;
+        const conflict = await UserModel.findOne({ email: canonicalEmail });
+        if (conflict && conflict.role !== 'SUPER_ADMIN') {
+          sendGooglePopupHtml(res, {
+            type: 'NEXASUA_GOOGLE_ERROR',
+            error:
+              'The configured Super Admin email is already assigned to a non-Super Admin account.',
+          });
+          return;
+        }
+        saUser =
+          conflict ||
+          (await UserModel.create({
+            email: canonicalEmail,
+            passwordHash: envCreds.configured ? hashPassword(envCreds.password) : '',
+            fullName: profile.name || 'NexaFlow Super Admin',
+            role: 'SUPER_ADMIN',
+            schoolId: null,
+            googleId: profile.sub,
+            linkedGoogleEmail: email,
+            authProvider: envCreds.configured ? 'HYBRID' : 'GOOGLE',
+            emailVerified: true,
+            status: 'ACTIVE',
+          }));
+
+        const cfg = await ensureSystemConfig();
+        if (!cfg.superAdminInitialized) {
+          cfg.superAdminInitialized = true;
+          await cfg.save();
+        }
+      } else {
+        if (saUser.status !== 'ACTIVE') {
+          sendGooglePopupHtml(res, {
+            type: 'NEXASUA_GOOGLE_ERROR',
+            error: 'Super Admin account is currently suspended.',
+          });
+          return;
+        }
+        saUser.googleId = profile.sub;
+        saUser.emailVerified = true;
+        if (!saUser.linkedGoogleEmail) {
+          saUser.linkedGoogleEmail = email;
+        }
+        if (saUser.authProvider === 'LOCAL') {
+          saUser.authProvider = 'HYBRID';
+        }
+      }
+
+      if (saUser.mfaEnabled) {
+        await saUser.save();
+        const mfaChallengeToken = jwt.sign(
+          { userId: String(saUser._id), stage: 'MFA_CHALLENGE' },
+          getJwtSecret(),
+          { expiresIn: '10m' }
+        );
+        sendGooglePopupHtml(res, {
+          type: 'NEXASUA_GOOGLE_MFA_REQUIRED',
+          mfaChallengeToken,
+          autoOpenAllDashboards: true,
+        });
+        return;
+      }
+
+      saUser.lastLoginAt = new Date();
+      await saUser.save();
+
+      const token = signSessionToken({
+        userId: String(saUser._id),
+        role: saUser.role,
+        schoolId: null,
+        mfaVerified: true,
+      });
+      setSessionCookie(res, token);
+
+      await writeAuditLog({
+        userId: String(saUser._id),
+        userEmail: saUser.email,
+        userRole: saUser.role,
+        action: 'SUPER_ADMIN_GOOGLE_LOGIN',
+        resourceType: 'User',
+        resourceId: String(saUser._id),
+        details: { matchedBy: superAdminMatch.reason, googleEmail: email },
+        ipAddress: req.ip,
+      });
+
+      sendGooglePopupHtml(res, {
+        type: 'NEXASUA_GOOGLE_AUTH_SUCCESS',
+        token,
+        autoOpenAllDashboards: true,
+        user: {
+          id: saUser._id,
+          email: saUser.email,
+          fullName: saUser.fullName,
+          role: saUser.role,
+          schoolId: saUser.schoolId,
+          mfaEnabled: saUser.mfaEnabled,
+          emailVerified: saUser.emailVerified,
+          linkedGoogleEmail: saUser.linkedGoogleEmail || email,
+        },
+        school: null,
+        subscription: null,
+      });
+      return;
+    }
+
+    if (state.intent === 'super_admin') {
       sendGooglePopupHtml(res, {
         type: 'NEXASUA_GOOGLE_ERROR',
-        error: 'Super Admin accounts cannot sign in with Google. Use the Super Admin portal.',
+        error: `Google account (${email}) is not linked to the Super Admin portal. Sign in with your Super Admin credentials first to link this Google account.`,
       });
       return;
     }
@@ -726,15 +1012,6 @@ async function handleGoogleCallback(req: express.Request, res: express.Response)
         email,
         fullName: profile.name || '',
         googleOnboardingToken,
-      });
-      return;
-    }
-
-    // Explicitly exclude Super Admin from Google Sign-In
-    if (user.role === 'SUPER_ADMIN') {
-      sendGooglePopupHtml(res, {
-        type: 'NEXASUA_GOOGLE_ERROR',
-        error: 'Super Admin accounts cannot sign in with Google. Use the Super Admin portal.',
       });
       return;
     }
@@ -892,6 +1169,7 @@ router.post('/mfa/verify-login', authLimiter, requireDb, async (req, res) => {
 
   res.json({
     token,
+    autoOpenAllDashboards: user.role === 'SUPER_ADMIN',
     user: {
       id: user._id,
       email: user.email,
@@ -900,6 +1178,7 @@ router.post('/mfa/verify-login', authLimiter, requireDb, async (req, res) => {
       schoolId: user.schoolId,
       mfaEnabled: user.mfaEnabled,
       emailVerified: user.emailVerified,
+      linkedGoogleEmail: (user as { linkedGoogleEmail?: string }).linkedGoogleEmail || '',
     },
     school,
     subscription,

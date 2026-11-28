@@ -72,6 +72,65 @@ export function getSuperAdminEnvCredentials(): {
   };
 }
 
+export function getSuperAdminGoogleEmails(): string[] {
+  const rawList = [
+    process.env.SUPER_ADMIN_GOOGLE_EMAIL || '',
+    process.env.SUPER_ADMIN_EMAIL || '',
+  ]
+    .join(',')
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => item.includes('@'));
+
+  return Array.from(new Set(rawList));
+}
+
+export function matchSuperAdminGoogleAccount(params: {
+  verifiedEmail: string;
+  googleSub?: string;
+  envGoogleEmails?: string[];
+  superAdminUsers?: Array<{
+    _id: unknown;
+    email?: string;
+    linkedGoogleEmail?: string;
+    googleId?: string;
+    status?: string;
+  }>;
+}): {
+  authorized: boolean;
+  matchedUserId: string | null;
+  reason: 'DB_EMAIL' | 'DB_LINKED_GOOGLE_EMAIL' | 'DB_GOOGLE_ID' | 'ENV_GOOGLE_EMAIL' | 'NONE';
+} {
+  const email = params.verifiedEmail.trim().toLowerCase();
+  const sub = (params.googleSub || '').trim();
+  const users = params.superAdminUsers || [];
+
+  for (const u of users) {
+    if (u.status && u.status !== 'ACTIVE') continue;
+    if ((u.linkedGoogleEmail || '').trim().toLowerCase() === email) {
+      return { authorized: true, matchedUserId: String(u._id), reason: 'DB_LINKED_GOOGLE_EMAIL' };
+    }
+    if ((u.email || '').trim().toLowerCase() === email) {
+      return { authorized: true, matchedUserId: String(u._id), reason: 'DB_EMAIL' };
+    }
+    if (sub && u.googleId && u.googleId === sub) {
+      return { authorized: true, matchedUserId: String(u._id), reason: 'DB_GOOGLE_ID' };
+    }
+  }
+
+  const allowedEnvEmails = params.envGoogleEmails ?? getSuperAdminGoogleEmails();
+  if (email && allowedEnvEmails.includes(email)) {
+    const activeFallback = users.find((u) => !u.status || u.status === 'ACTIVE');
+    return {
+      authorized: true,
+      matchedUserId: activeFallback ? String(activeFallback._id) : null,
+      reason: 'ENV_GOOGLE_EMAIL',
+    };
+  }
+
+  return { authorized: false, matchedUserId: null, reason: 'NONE' };
+}
+
 export function getSchoolAdminEnvCredentials(): {
   email: string;
   password: string;

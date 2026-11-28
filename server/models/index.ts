@@ -193,6 +193,7 @@ const userSchema = new Schema(
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, default: '' },
     googleId: { type: String, default: '', index: true },
+    linkedGoogleEmail: { type: String, default: '', lowercase: true, trim: true, index: true },
     authProvider: { type: String, enum: ['LOCAL', 'GOOGLE', 'HYBRID'], default: 'LOCAL' },
     fullName: { type: String, required: true, trim: true },
     phone: { type: String, default: '', trim: true },

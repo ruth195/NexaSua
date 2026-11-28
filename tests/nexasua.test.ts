@@ -698,4 +698,124 @@ test('PWA Setup & Top Header Install Button across Public, School, and Super Adm
   assert.match(indexHtml, /viewport-fit=cover/);
 });
 
+test('Super Admin Google Linking & Authorization rejects unlinked accounts and matches linked/env accounts', async () => {
+  const { getSuperAdminGoogleEmails, matchSuperAdminGoogleAccount } = await import(
+    '../server/config/env.ts'
+  );
+
+  const prevGoogle = process.env.SUPER_ADMIN_GOOGLE_EMAIL;
+  const prevSuperEmail = process.env.SUPER_ADMIN_EMAIL;
+  try {
+    process.env.SUPER_ADMIN_EMAIL = 'platform@nexasua.com';
+    process.env.SUPER_ADMIN_GOOGLE_EMAIL = 'owner@gmail.com, backup@gmail.com';
+    const envList = getSuperAdminGoogleEmails();
+    assert.deepEqual(envList, ['owner@gmail.com', 'backup@gmail.com', 'platform@nexasua.com']);
+
+    // 1. Linked Google Email match in DB
+    const dbLinked = matchSuperAdminGoogleAccount({
+      verifiedEmail: 'owner.personal@gmail.com',
+      googleSub: 'sub-999',
+      envGoogleEmails: [],
+      superAdminUsers: [
+        {
+          _id: 'sa-1',
+          email: 'platform@nexasua.com',
+          linkedGoogleEmail: 'owner.personal@gmail.com',
+          googleId: '',
+          status: 'ACTIVE',
+        },
+      ],
+    });
+    assert.equal(dbLinked.authorized, true);
+    assert.equal(dbLinked.matchedUserId, 'sa-1');
+    assert.equal(dbLinked.reason, 'DB_LINKED_GOOGLE_EMAIL');
+
+    // 2. Google sub match even if email differs
+    const subMatch = matchSuperAdminGoogleAccount({
+      verifiedEmail: 'another@gmail.com',
+      googleSub: 'sub-123',
+      envGoogleEmails: [],
+      superAdminUsers: [
+        { _id: 'sa-1', email: 'platform@nexasua.com', googleId: 'sub-123', status: 'ACTIVE' },
+      ],
+    });
+    assert.equal(subMatch.authorized, true);
+    assert.equal(subMatch.reason, 'DB_GOOGLE_ID');
+
+    // 3. Env email fallback links to existing active SUPER_ADMIN
+    const envMatch = matchSuperAdminGoogleAccount({
+      verifiedEmail: 'backup@gmail.com',
+      envGoogleEmails: envList,
+      superAdminUsers: [{ _id: 'sa-2', email: 'platform@nexasua.com', status: 'ACTIVE' }],
+    });
+    assert.equal(envMatch.authorized, true);
+    assert.equal(envMatch.matchedUserId, 'sa-2');
+    assert.equal(envMatch.reason, 'ENV_GOOGLE_EMAIL');
+
+    // 4. Suspended Super Admin cannot authenticate via DB match
+    const suspended = matchSuperAdminGoogleAccount({
+      verifiedEmail: 'suspended@gmail.com',
+      envGoogleEmails: [],
+      superAdminUsers: [
+        {
+          _id: 'sa-3',
+          email: 'suspended@gmail.com',
+          linkedGoogleEmail: 'suspended@gmail.com',
+          status: 'SUSPENDED',
+        },
+      ],
+    });
+    assert.equal(suspended.authorized, false);
+
+    // 5. Random unauthorized Gmail account is rejected
+    const outsider = matchSuperAdminGoogleAccount({
+      verifiedEmail: 'random.stranger@gmail.com',
+      googleSub: 'sub-stranger',
+      envGoogleEmails: envList,
+      superAdminUsers: [
+        {
+          _id: 'sa-1',
+          email: 'platform@nexasua.com',
+          linkedGoogleEmail: 'owner.personal@gmail.com',
+          googleId: 'sub-123',
+          status: 'ACTIVE',
+        },
+      ],
+    });
+    assert.equal(outsider.authorized, false);
+    assert.equal(outsider.reason, 'NONE');
+  } finally {
+    if (prevGoogle === undefined) delete process.env.SUPER_ADMIN_GOOGLE_EMAIL;
+    else process.env.SUPER_ADMIN_GOOGLE_EMAIL = prevGoogle;
+    if (prevSuperEmail === undefined) delete process.env.SUPER_ADMIN_EMAIL;
+    else process.env.SUPER_ADMIN_EMAIL = prevSuperEmail;
+  }
+});
+
+test('Super Admin All-Dashboards Tour includes every school role dashboard', async () => {
+  const fs = await import('node:fs');
+  const path = await import('node:path');
+
+  const workspaceSrc = fs.readFileSync(
+    path.resolve(process.cwd(), 'src/pages/SchoolWorkspace.tsx'),
+    'utf8'
+  );
+  for (const roleKey of [
+    'HEADTEACHER',
+    'CLASS_TEACHER',
+    'SUBJECT_TEACHER',
+    'BURSAR',
+    'ADMIN_STAFF',
+    'STUDENT',
+    'PARENT',
+  ]) {
+    assert.ok(workspaceSrc.includes(roleKey), `SchoolWorkspace missing role dashboard: ${roleKey}`);
+  }
+
+  const appSrc = fs.readFileSync(path.resolve(process.cwd(), 'src/App.tsx'), 'utf8');
+  assert.match(appSrc, /autoOpenAllDashboards/);
+  assert.match(appSrc, /ensure-admin-workspace/);
+});
+
+
 

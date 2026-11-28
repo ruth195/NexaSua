@@ -80,6 +80,7 @@ export interface AuthenticatedRequest extends Request {
     mfaEnabled: boolean;
     mfaVerified: boolean;
     emailVerified: boolean;
+    linkedGoogleEmail?: string;
   };
   schoolDoc?: InstanceType<typeof SchoolModel>;
   subscriptionDoc?: InstanceType<typeof SubscriptionModel>;
@@ -193,6 +194,7 @@ export async function authenticate(
     mfaEnabled: Boolean(user.mfaEnabled),
     mfaVerified: Boolean(payload.mfaVerified),
     emailVerified: Boolean(user.emailVerified),
+    linkedGoogleEmail: (user as { linkedGoogleEmail?: string }).linkedGoogleEmail || '',
   };
 
   next();

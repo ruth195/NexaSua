@@ -2,7 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   BarChart3,
   BookOpen,
+  Building2,
   CalendarCheck,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   ClipboardCheck,
   CreditCard,
   FileSpreadsheet,
@@ -62,10 +66,31 @@ type WorkspaceTab =
   | 'operations'
   | 'settings';
 
+const SUPER_ADMIN_DASHBOARD_STEPS: Array<{
+  role: 'AUTO' | UserRole;
+  label: string;
+  shortLabel: string;
+  defaultTab: WorkspaceTab;
+}> = [
+  { role: 'AUTO', label: 'School Admin (All Plans)', shortLabel: 'School Admin', defaultTab: 'overview' },
+  { role: 'HEADTEACHER', label: 'Headteacher Dashboard', shortLabel: 'Headteacher', defaultTab: 'reports' },
+  { role: 'CLASS_TEACHER', label: 'Class Teacher Dashboard', shortLabel: 'Class Teacher', defaultTab: 'marks' },
+  { role: 'SUBJECT_TEACHER', label: 'Subject Teacher Dashboard', shortLabel: 'Subject Teacher', defaultTab: 'marks' },
+  { role: 'BURSAR', label: 'Bursar / Finance Dashboard', shortLabel: 'Bursar', defaultTab: 'finance' },
+  { role: 'ADMIN_STAFF', label: 'Admin Staff Dashboard', shortLabel: 'Admin Staff', defaultTab: 'students' },
+  { role: 'STUDENT', label: 'Student Portal', shortLabel: 'Student', defaultTab: 'overview' },
+  { role: 'PARENT', label: 'Parent / Guardian Portal', shortLabel: 'Parent', defaultTab: 'overview' },
+];
+
 export function SchoolWorkspace({
   user,
   school,
   subscription,
+  initialRolePreview = 'AUTO',
+  onRolePreviewChange,
+  autoOpenedViaGoogle = false,
+  onDismissAutoBanner,
+  onSwitchAdminSchool,
   candlelight = false,
   onToggleCandlelight,
   onRefreshAuth,
@@ -75,6 +100,14 @@ export function SchoolWorkspace({
   user: AuthUser;
   school: SchoolSummary | null;
   subscription: SubscriptionSummary | null;
+  initialRolePreview?: 'AUTO' | UserRole;
+  onRolePreviewChange?: (role: 'AUTO' | UserRole) => void;
+  autoOpenedViaGoogle?: boolean;
+  onDismissAutoBanner?: () => void;
+  onSwitchAdminSchool?: (ctx: {
+    school: SchoolSummary;
+    subscription: SubscriptionSummary | null;
+  }) => void;
   candlelight?: boolean;
   onToggleCandlelight?: () => void;
   onRefreshAuth: () => void;
@@ -83,15 +116,21 @@ export function SchoolWorkspace({
 }) {
   const isAdminUser = user.role === 'SUPER_ADMIN' || user.role === 'SCHOOL_ADMIN';
   const [planPreview, setPlanPreview] = useState<'ALL' | 'CORE' | 'COMPLETE'>('ALL');
-  const [rolePreview, setRolePreview] = useState<'AUTO' | UserRole>('AUTO');
+  const [rolePreview, setRolePreview] = useState<'AUTO' | UserRole>(initialRolePreview);
   const effectiveRole: UserRole = isAdminUser && rolePreview !== 'AUTO' ? rolePreview : user.role;
   const isStudentOrParent = effectiveRole === 'STUDENT' || effectiveRole === 'PARENT';
   const dash = resolveDashboardSettings(school?.dashboardSettings);
   const dashTheme = resolveDashboardTheme(dash.primaryColor, dash.accentColor);
   const hasManualTab = useRef(false);
-  const [tab, setTab] = useState<WorkspaceTab>(() => dash.defaultLandingTab || 'overview');
+  const [tab, setTab] = useState<WorkspaceTab>(() => {
+    const matchedStep = SUPER_ADMIN_DASHBOARD_STEPS.find((s) => s.role === initialRolePreview);
+    if (initialRolePreview !== 'AUTO' && matchedStep) return matchedStep.defaultTab;
+    return dash.defaultLandingTab || 'overview';
+  });
   const [mobileNav, setMobileNav] = useState(false);
   const [overview, setOverview] = useState<any>(null);
+  const [adminSchools, setAdminSchools] = useState<Array<{ _id: string; name: string; schoolCode: string }>>([]);
+  const [switchingSchool, setSwitchingSchool] = useState(false);
   const [planCatalog, setPlanCatalog] = useState<PlanCatalogItem[]>([]);
   const [pricingBands, setPricingBands] = useState<PricingBand[]>([]);
   const [verifyBanner, setVerifyBanner] = useState('');
@@ -99,6 +138,31 @@ export function SchoolWorkspace({
   const [vacBusy, setVacBusy] = useState(false);
   const [vacErr, setVacErr] = useState('');
   const [vacMsg, setVacMsg] = useState('');
+
+  useEffect(() => {
+    setRolePreview(initialRolePreview);
+  }, [initialRolePreview]);
+
+  const selectDashboardRole = (nextRole: 'AUTO' | UserRole, explicitTab?: WorkspaceTab) => {
+    setRolePreview(nextRole);
+    onRolePreviewChange?.(nextRole);
+    const step = SUPER_ADMIN_DASHBOARD_STEPS.find((s) => s.role === nextRole);
+    const targetTab = explicitTab ?? (nextRole === 'AUTO' ? 'overview' : step?.defaultTab || 'overview');
+    hasManualTab.current = true;
+    setTab(targetTab);
+  };
+
+  const currentTourIndex = Math.max(
+    0,
+    SUPER_ADMIN_DASHBOARD_STEPS.findIndex((s) => s.role === rolePreview)
+  );
+
+  const stepTour = (delta: -1 | 1) => {
+    const total = SUPER_ADMIN_DASHBOARD_STEPS.length;
+    const nextIdx = (currentTourIndex + delta + total) % total;
+    const nextStep = SUPER_ADMIN_DASHBOARD_STEPS[nextIdx];
+    selectDashboardRole(nextStep.role, nextStep.defaultTab);
+  };
 
   const selectTab = (next: WorkspaceTab) => {
     hasManualTab.current = true;
@@ -162,6 +226,13 @@ export function SchoolWorkspace({
         })
         .catch(() => null);
     }
+    if (user.role === 'SUPER_ADMIN') {
+      apiFetch<{ schools: Array<{ _id: string; name: string; schoolCode: string }> }>(
+        '/api/super-admin/schools'
+      )
+        .then((res) => setAdminSchools(res.schools))
+        .catch(() => null);
+    }
   };
 
   useEffect(() => {
@@ -190,7 +261,26 @@ export function SchoolWorkspace({
         .then(() => setVerifyBanner('School fee payment verified and receipt issued.'))
         .catch(() => null);
     }
-  }, []);
+  }, [school?.id, school?._id]);
+
+  const handleSwitchAdminSchool = async (targetSchoolId: string) => {
+    if (!targetSchoolId || !onSwitchAdminSchool) return;
+    setSwitchingSchool(true);
+    try {
+      const ctx = await apiFetch<{
+        school: SchoolSummary;
+        subscription: SubscriptionSummary | null;
+      }>(`/api/super-admin/schools/${targetSchoolId}/workspace-context`, {
+        method: 'POST',
+        body: JSON.stringify({}),
+      });
+      onSwitchAdminSchool(ctx);
+    } catch {
+      // ignore switch error
+    } finally {
+      setSwitchingSchool(false);
+    }
+  };
 
   const navItems: Array<{ id: WorkspaceTab; label: string; icon: React.ReactNode; roles: string[] }> = [
     {
@@ -414,101 +504,184 @@ export function SchoolWorkspace({
 
         <main className="flex-1 p-3 sm:p-6 lg:p-8 pb-20 lg:pb-8 max-w-7xl w-full mx-auto space-y-5 sm:space-y-6">
           {isAdminUser && school && (
-            <div className="rounded-xl bg-[#102846] text-white px-3.5 sm:px-4 py-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-              <div className="text-xs space-y-0.5">
-                <div>
-                  <span className="font-bold text-[#E2A83B]">
-                    {user.role === 'SUPER_ADMIN' ? 'Super Admin Full Access' : 'Admin Full Access'}
-                  </span>{' '}
-                  · All plans and dashboards unlocked for <strong className="text-white">{school.name}</strong>{' '}
-                  <span className="text-slate-300 font-mono">
-                    (School Plan: {subscription?.plan || 'COMPLETE'} · Viewing:{' '}
-                    {planPreview === 'ALL' ? 'All Plans' : planPreview})
-                  </span>
+            <div className="rounded-xl bg-[#102846] text-white px-3.5 sm:px-4 py-3.5 space-y-3">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div className="text-xs space-y-0.5">
+                  <div>
+                    <span className="font-bold text-[#E2A83B]">
+                      {user.role === 'SUPER_ADMIN' ? 'Super Admin Full Access' : 'Admin Full Access'}
+                    </span>{' '}
+                    · All plans and dashboards unlocked for <strong className="text-white">{school.name}</strong>{' '}
+                    <span className="text-slate-300 font-mono">
+                      (School Plan: {subscription?.plan || 'COMPLETE'} · Viewing:{' '}
+                      {planPreview === 'ALL' ? 'All Plans' : planPreview})
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2">
+                  {user.role === 'SUPER_ADMIN' && adminSchools.length > 0 && onSwitchAdminSchool && (
+                    <div className="inline-flex items-center gap-1.5 rounded-lg border border-white/25 bg-[#193a63] px-2.5 py-1 text-xs text-white">
+                      <Building2 className="w-3.5 h-3.5 text-[#E2A83B] shrink-0" />
+                      <select
+                        aria-label="Switch School"
+                        disabled={switchingSchool}
+                        value={school.id || school._id || ''}
+                        onChange={(e) => void handleSwitchAdminSchool(e.target.value)}
+                        className="bg-transparent font-semibold text-white focus:outline-none max-w-[180px]"
+                      >
+                        {adminSchools.map((s) => (
+                          <option key={s._id} value={s._id} className="text-[#102846]">
+                            {s.name} ({s.schoolCode})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <select
+                    aria-label="Preview Plan Tier"
+                    value={planPreview}
+                    onChange={(e) => setPlanPreview(e.target.value as 'ALL' | 'CORE' | 'COMPLETE')}
+                    className="w-full sm:w-auto rounded-lg border border-white/25 bg-[#193a63] px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-white"
+                  >
+                    <option value="ALL">Plan View: All Plans Unlocked</option>
+                    <option value="CORE">Plan View: NexaSua Core</option>
+                    <option value="COMPLETE">Plan View: NexaSua Complete</option>
+                  </select>
+
+                  <select
+                    aria-label="Preview Role Dashboard"
+                    value={rolePreview}
+                    onChange={(e) => selectDashboardRole(e.target.value as 'AUTO' | UserRole)}
+                    className="rounded-lg border border-white/25 bg-[#193a63] px-2.5 py-1.5 text-xs font-semibold text-white"
+                  >
+                    {SUPER_ADMIN_DASHBOARD_STEPS.map((step) => (
+                      <option key={step.role} value={step.role}>
+                        Dashboard: {step.label}
+                      </option>
+                    ))}
+                  </select>
+
+                  <div className="inline-flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => stepTour(-1)}
+                      aria-label="Previous Dashboard"
+                      className="inline-flex items-center gap-1 rounded-lg border border-white/25 bg-white/10 hover:bg-white/20 px-2.5 py-1.5 text-xs font-semibold text-white"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" /> Prev
+                    </button>
+                    <span className="px-1.5 text-[11px] font-mono text-slate-200">
+                      {currentTourIndex + 1}/{SUPER_ADMIN_DASHBOARD_STEPS.length}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => stepTour(1)}
+                      aria-label="Next Dashboard"
+                      className="inline-flex items-center gap-1 rounded-lg bg-[#E2A83B] hover:bg-[#d39a2f] px-2.5 py-1.5 text-xs font-bold text-[#102846]"
+                    >
+                      Next <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => selectDashboardRole('AUTO', 'plans')}
+                    className="rounded-lg border border-white/25 bg-white/10 hover:bg-white/20 px-3 py-1.5 text-xs font-semibold text-white whitespace-nowrap"
+                  >
+                    All Plans
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => selectDashboardRole('AUTO', 'settings')}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-white/25 bg-white/10 hover:bg-white/20 px-3 py-1.5 text-xs font-semibold text-white whitespace-nowrap"
+                  >
+                    <Palette className="w-3.5 h-3.5" /> Customize Dashboard
+                  </button>
+
+                  {user.role === 'SUPER_ADMIN' && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const targetId = school.id || school._id;
+                          if (!targetId) return;
+                          const nextPlan = subscription?.plan === 'CORE' ? 'COMPLETE' : 'CORE';
+                          void apiFetch(`/api/super-admin/schools/${targetId}/subscription`, {
+                            method: 'PUT',
+                            body: JSON.stringify({ plan: nextPlan, status: 'ACTIVE', periodDays: 365 }),
+                          }).then(() => onRefreshAuth());
+                        }}
+                        className="rounded-lg border border-white/25 bg-white/10 hover:bg-white/20 px-3 py-1.5 text-xs font-semibold text-white whitespace-nowrap"
+                      >
+                        Set School Plan: {subscription?.plan === 'CORE' ? 'COMPLETE' : 'CORE'}
+                      </button>
+                      {onExitAdminWorkspace && (
+                        <button
+                          type="button"
+                          onClick={onExitAdminWorkspace}
+                          className="rounded-lg bg-[#148D82] hover:bg-[#10766c] px-3 py-1.5 text-xs font-semibold text-white whitespace-nowrap"
+                        >
+                          Platform Super Admin
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:flex sm:flex-wrap items-center gap-2">
-                <select
-                  aria-label="Preview Plan Tier"
-                  value={planPreview}
-                  onChange={(e) => setPlanPreview(e.target.value as 'ALL' | 'CORE' | 'COMPLETE')}
-                  className="w-full sm:w-auto rounded-lg border border-white/25 bg-[#193a63] px-2.5 py-2 sm:py-1.5 text-xs font-semibold text-white"
-                >
-                  <option value="ALL">Plan View: All Plans Unlocked</option>
-                  <option value="CORE">Plan View: NexaSua Core</option>
-                  <option value="COMPLETE">Plan View: NexaSua Complete</option>
-                </select>
-
-                <select
-                  aria-label="Preview Role Dashboard"
-                  value={rolePreview}
-                  onChange={(e) => {
-                    const next = e.target.value as 'AUTO' | UserRole;
-                    setRolePreview(next);
-                    setTab('overview');
-                  }}
-                  className="rounded-lg border border-white/25 bg-[#193a63] px-2.5 py-1.5 text-xs font-semibold text-white"
-                >
-                  <option value="AUTO">Dashboard: Full Admin View</option>
-                  <option value="HEADTEACHER">Dashboard: Headteacher</option>
-                  <option value="CLASS_TEACHER">Dashboard: Class Teacher</option>
-                  <option value="BURSAR">Dashboard: Bursar / Finance</option>
-                  <option value="STUDENT">Dashboard: Student Portal</option>
-                  <option value="PARENT">Dashboard: Parent / Guardian</option>
-                </select>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRolePreview('AUTO');
-                    selectTab('plans');
-                  }}
-                  className="rounded-lg border border-white/25 bg-white/10 hover:bg-white/20 px-3 py-1.5 text-xs font-semibold text-white whitespace-nowrap"
-                >
-                  All Plans
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    setRolePreview('AUTO');
-                    selectTab('settings');
-                  }}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/25 bg-white/10 hover:bg-white/20 px-3 py-1.5 text-xs font-semibold text-white whitespace-nowrap"
-                >
-                  <Palette className="w-3.5 h-3.5" /> Customize Dashboard
-                </button>
-
-                {user.role === 'SUPER_ADMIN' && (
-                  <>
+              {/* Scrollable Quick Dashboard Switcher Strip */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pt-2 border-t border-white/10 pb-0.5">
+                {SUPER_ADMIN_DASHBOARD_STEPS.map((step) => {
+                  const active = rolePreview === step.role;
+                  return (
                     <button
+                      key={step.role}
                       type="button"
-                      onClick={() => {
-                        const targetId = school.id || school._id;
-                        if (!targetId) return;
-                        const nextPlan = subscription?.plan === 'CORE' ? 'COMPLETE' : 'CORE';
-                        void apiFetch(`/api/super-admin/schools/${targetId}/subscription`, {
-                          method: 'PUT',
-                          body: JSON.stringify({ plan: nextPlan, status: 'ACTIVE', periodDays: 365 }),
-                        }).then(() => onRefreshAuth());
-                      }}
-                      className="rounded-lg border border-white/25 bg-white/10 hover:bg-white/20 px-3 py-1.5 text-xs font-semibold text-white whitespace-nowrap"
+                      onClick={() => selectDashboardRole(step.role, step.defaultTab)}
+                      className={`px-2.5 py-1 rounded-md text-[11px] font-semibold whitespace-nowrap transition-colors ${
+                        active
+                          ? 'bg-[#148D82] text-white'
+                          : 'bg-white/10 text-slate-200 hover:bg-white/20'
+                      }`}
                     >
-                      Set School Plan: {subscription?.plan === 'CORE' ? 'COMPLETE' : 'CORE'}
+                      {step.shortLabel}
                     </button>
-                    {onExitAdminWorkspace && (
-                      <button
-                        type="button"
-                        onClick={onExitAdminWorkspace}
-                        className="rounded-lg bg-[#148D82] hover:bg-[#10766c] px-3 py-1.5 text-xs font-semibold text-white whitespace-nowrap"
-                      >
-                        ← Back to Super Admin Dashboard
-                      </button>
-                    )}
-                  </>
+                  );
+                })}
+                {user.role === 'SUPER_ADMIN' && onExitAdminWorkspace && (
+                  <button
+                    type="button"
+                    onClick={onExitAdminWorkspace}
+                    className="px-2.5 py-1 rounded-md text-[11px] font-semibold whitespace-nowrap bg-[#E2A83B]/20 text-[#E2A83B] hover:bg-[#E2A83B]/30"
+                  >
+                    Platform Admin Hub
+                  </button>
                 )}
               </div>
+            </div>
+          )}
+
+          {autoOpenedViaGoogle && user.role === 'SUPER_ADMIN' && (
+            <div className="rounded-xl border border-[#148D82]/30 bg-emerald-50 px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs text-emerald-950">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-[#148D82] shrink-0" />
+                <span>
+                  Signed in with Google as Super Admin. All plans and role dashboards are open — use{' '}
+                  <strong>Next / Prev</strong> or the dashboard tabs above to go through every portal.
+                </span>
+              </div>
+              {onDismissAutoBanner && (
+                <button
+                  type="button"
+                  onClick={onDismissAutoBanner}
+                  className="text-emerald-800 font-semibold hover:underline"
+                >
+                  Dismiss
+                </button>
+              )}
             </div>
           )}
 

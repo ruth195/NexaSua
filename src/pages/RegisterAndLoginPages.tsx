@@ -564,6 +564,7 @@ export function LoginPage({
     user: AuthUser;
     school: SchoolSummary | null;
     subscription: SubscriptionSummary | null;
+    autoOpenAllDashboards?: boolean;
   }) => void;
   onNavigate: (p: string) => void;
 }) {
@@ -616,6 +617,7 @@ export function LoginPage({
           user: d.user,
           school: d.school || null,
           subscription: d.subscription || null,
+          autoOpenAllDashboards: Boolean(d.autoOpenAllDashboards),
         });
       } else if (d.type === 'NEXASUA_GOOGLE_MFA_REQUIRED' && d.mfaChallengeToken) {
         setGoogleBusy(false);
@@ -708,6 +710,7 @@ export function LoginPage({
         user: AuthUser;
         school: SchoolSummary | null;
         subscription: SubscriptionSummary | null;
+        autoOpenAllDashboards?: boolean;
       }>('/api/auth/mfa/verify-login', {
         method: 'POST',
         body: JSON.stringify({ mfaChallengeToken, code: mfaCode }),
@@ -958,13 +961,18 @@ export function SuperAdminPortalLoginPage({
   onLoginSuccess,
   onNavigate,
 }: {
-  onLoginSuccess: (data: { token: string; user: AuthUser }) => void;
+  onLoginSuccess: (data: {
+    token: string;
+    user: AuthUser;
+    autoOpenAllDashboards?: boolean;
+  }) => void;
   onNavigate?: (p: string) => void;
 }) {
   const [status, setStatus] = useState<{
     dbConnected: boolean;
     superAdminInitialized: boolean;
     superAdminManagedBySecrets?: boolean;
+    googleOAuthEnabled?: boolean;
     setupKeyRequired: boolean;
   } | null>(null);
 
@@ -975,6 +983,7 @@ export function SuperAdminPortalLoginPage({
   const [mfaToken, setMfaToken] = useState('');
   const [mfaCode, setMfaCode] = useState('');
   const [busy, setBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -985,10 +994,60 @@ export function SuperAdminPortalLoginPage({
           dbConnected: false,
           superAdminInitialized: false,
           superAdminManagedBySecrets: false,
+          googleOAuthEnabled: false,
           setupKeyRequired: false,
         })
       );
   }, []);
+
+  useEffect(() => {
+    const handleOAuthMessage = (event: MessageEvent) => {
+      if (!isAllowedOAuthOrigin(event.origin)) return;
+      const d = event.data;
+      if (!d || typeof d !== 'object') return;
+
+      if (d.type === 'NEXASUA_GOOGLE_AUTH_SUCCESS' && d.token && d.user) {
+        setGoogleBusy(false);
+        if (d.user.role !== 'SUPER_ADMIN') {
+          setError('This Google account is not linked to the Super Admin portal.');
+          return;
+        }
+        setError('');
+        setMemoryAuthToken(d.token);
+        onLoginSuccess({
+          token: d.token,
+          user: d.user,
+          autoOpenAllDashboards: d.autoOpenAllDashboards ?? true,
+        });
+      } else if (d.type === 'NEXASUA_GOOGLE_MFA_REQUIRED' && d.mfaChallengeToken) {
+        setGoogleBusy(false);
+        setMfaToken(d.mfaChallengeToken);
+        setError('');
+      } else if (d.type === 'NEXASUA_GOOGLE_ERROR') {
+        setGoogleBusy(false);
+        setError(d.error || 'Google authentication failed.');
+      }
+    };
+
+    window.addEventListener('message', handleOAuthMessage);
+    return () => window.removeEventListener('message', handleOAuthMessage);
+  }, [onLoginSuccess]);
+
+  const handleSuperAdminGoogleSignIn = async () => {
+    setError('');
+    setGoogleBusy(true);
+    try {
+      const { url } = await apiFetch<{ url: string }>('/api/auth/google/url?intent=super_admin');
+      const popup = window.open(url, 'nexasua_google_auth', 'width=520,height=640');
+      if (!popup) {
+        setGoogleBusy(false);
+        setError('Please allow popups for this site to continue with Google.');
+      }
+    } catch (err) {
+      setGoogleBusy(false);
+      setError(err instanceof Error ? err.message : 'Unable to start Google Sign-In.');
+    }
+  };
 
   const handleBootstrap = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1050,19 +1109,24 @@ export function SuperAdminPortalLoginPage({
     setBusy(true);
     setError('');
     try {
-      const res = await apiFetch<{ token: string; user: AuthUser }>(
-        '/api/auth/mfa/verify-login',
-        {
-          method: 'POST',
-          body: JSON.stringify({ mfaChallengeToken: mfaToken, code: mfaCode }),
-        }
-      );
+      const res = await apiFetch<{
+        token: string;
+        user: AuthUser;
+        autoOpenAllDashboards?: boolean;
+      }>('/api/auth/mfa/verify-login', {
+        method: 'POST',
+        body: JSON.stringify({ mfaChallengeToken: mfaToken, code: mfaCode }),
+      });
       if (res.user.role !== 'SUPER_ADMIN') {
         setError('Restricted to Super Administrators.');
         return;
       }
       setMemoryAuthToken(res.token);
-      onLoginSuccess(res);
+      onLoginSuccess({
+        token: res.token,
+        user: res.user,
+        autoOpenAllDashboards: res.autoOpenAllDashboards ?? true,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'MFA failed.');
     } finally {
@@ -1216,6 +1280,28 @@ export function SuperAdminPortalLoginPage({
               <Lock className="w-4 h-4" />
               {busy ? 'Authenticating...' : 'Sign In to Super Admin'}
             </button>
+
+            <div className="relative flex items-center py-1">
+              <div className="flex-grow border-t border-slate-200" />
+              <span className="mx-3 text-xs text-[#64748B]">or</span>
+              <div className="flex-grow border-t border-slate-200" />
+            </div>
+
+            <GoogleAuthButton
+              label={
+                googleBusy
+                  ? 'Connecting to Google...'
+                  : 'Continue with Google (Open All Dashboards)'
+              }
+              busy={googleBusy}
+              onClick={() => void handleSuperAdminGoogleSignIn()}
+            />
+            {status.googleOAuthEnabled === false && (
+              <p className="text-[11px] text-[#64748B] text-center">
+                Requires <span className="font-mono">GOOGLE_CLIENT_ID</span> and{' '}
+                <span className="font-mono">GOOGLE_CLIENT_SECRET</span> in Secrets.
+              </p>
+            )}
           </form>
         )}
 
